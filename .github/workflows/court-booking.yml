@@ -3,6 +3,9 @@ name: Tennis Court Booking
 on:
   schedule:
     # Run at 4:34 UTC (5:34 GMT/BST in London) on Thursday and Saturday
+    # This means it will run:
+    # - Every Thursday at 5:34 AM London time for Thursday evening bookings
+    # - Every Saturday at 5:34 AM London time for Saturday morning bookings
     - cron: '34 4 * * 4,6'
   workflow_dispatch:  # Allows manual triggering
 
