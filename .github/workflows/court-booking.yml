@@ -1,0 +1,54 @@
+name: Tennis Court Booking
+
+on:
+  schedule:
+    # Run at 7:00 AM UTC on Thursday and Saturday
+    - cron: '0 7 * * 4,6'
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  book-courts:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install playwright python-dotenv
+        playwright install chromium
+        
+    - name: Set booking times based on day
+      run: |
+        if [ $(date +%u) -eq 4 ]; then
+          # Thursday - Set for evening slots (19:00 and 20:00)
+          echo "BOOKING_TIME1=19:00" >> $GITHUB_ENV
+          echo "BOOKING_TIME2=20:00" >> $GITHUB_ENV
+        else
+          # Saturday - Set for morning slots (11:00 and 12:00)
+          echo "BOOKING_TIME1=11:00" >> $GITHUB_ENV
+          echo "BOOKING_TIME2=12:00" >> $GITHUB_ENV
+        fi
+
+    - name: Run booking script
+      env:
+        LTA_USERNAME: ${{ secrets.LTA_USERNAME }}
+        LTA_PASSWORD: ${{ secrets.LTA_PASSWORD }}
+        LTA_USERNAME2: ${{ secrets.LTA_USERNAME2 }}
+        LTA_PASSWORD2: ${{ secrets.LTA_PASSWORD2 }}
+      run: python court_booker.py
+
+    - name: Upload screenshots on failure
+      if: failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: error-screenshots
+        path: |
+          *.png
+        retention-days: 5 
