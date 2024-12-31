@@ -1,1 +1,3 @@
 # Python\n__pycache__/\n*.py[cod]\n*$py.class\n.env\nvenv/\nerror-*.png\nno-courts-available*.png
+venv/
+.env
