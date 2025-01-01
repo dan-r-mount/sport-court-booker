@@ -300,21 +300,30 @@ def main():
     Main function that coordinates multiple booking attempts.
     Thursday: 19:00 and 20:00
     Saturday: 11:00 and 12:00
+    Special test case: January 1st - 19:00 and 20:00
     """
     load_dotenv()
     
-    # Determine if it's Thursday (4) or Saturday (6)
-    current_day = datetime.now().weekday() + 1  # 1-based weekday (1=Monday, 7=Sunday)
+    # Get current date information
+    current_date = datetime.now()
+    current_day = current_date.weekday() + 1  # 1-based weekday (1=Monday, 7=Sunday)
+    is_january_first = current_date.month == 1 and current_date.day == 1
     
     # Set time slots based on the day
-    if current_day == 4:  # Thursday
+    if is_january_first:
+        # Special test case for January 1st
+        time_slot1 = '19:00'  # 7 PM
+        time_slot2 = '20:00'  # 8 PM
+        logging.info("Running special test booking for January 1st")
+    elif current_day == 4:  # Thursday
         time_slot1 = '19:00'  # 7 PM
         time_slot2 = '20:00'  # 8 PM
     else:  # Saturday
         time_slot1 = '11:00'  # 11 AM
         time_slot2 = '12:00'  # 12 PM
     
-    logging.info(f"Running bookings for {'Thursday' if current_day == 4 else 'Saturday'}")
+    day_name = "January 1st (Test)" if is_january_first else ("Thursday" if current_day == 4 else "Saturday")
+    logging.info(f"Running bookings for {day_name}")
     logging.info(f"Time slots: {time_slot1} and {time_slot2}")
     
     # Define booking configurations
