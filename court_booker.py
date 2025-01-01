@@ -230,34 +230,63 @@ def attempt_booking(username_env_var, password_env_var, time_slot):
                 logging.info("Starting login process...")
                 page.wait_for_load_state('networkidle')
                 
+                # Take screenshot before login attempt
+                page.screenshot(path=f"pre-login-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
+                
                 logging.info("Clicking LTA login button...")
                 lta_login_button = page.locator('button[name="idp"][value="LTA2"]')
+                if not lta_login_button.is_visible(timeout=5000):
+                    page.screenshot(path=f"no-login-button-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
+                    raise Exception("Login button not visible")
+                
                 lta_login_button.click()
                 
                 # After clicking login button
                 page.wait_for_load_state('networkidle')
                 page.wait_for_timeout(5000)  # Increased wait time
                 
+                # Take screenshot of login form
+                page.screenshot(path=f"login-form-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
+                
                 logging.info("Entering login credentials...")
                 username_input = page.locator('input[placeholder="Username"]')
+                if not username_input.is_visible(timeout=5000):
+                    page.screenshot(path=f"no-username-field-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
+                    raise Exception("Username field not visible")
+                
                 username_input.fill(username)
                 page.wait_for_timeout(1000)
                 
                 password_input = page.locator('input[placeholder="Password"]')
+                if not password_input.is_visible(timeout=5000):
+                    page.screenshot(path=f"no-password-field-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
+                    raise Exception("Password field not visible")
+                
                 password_input.fill(password)
                 page.wait_for_timeout(1000)
                 
+                # Take screenshot before submitting
+                page.screenshot(path=f"pre-submit-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
+                
                 logging.info("Submitting login form...")
                 login_button = page.get_by_role("button", name="Log in")
+                if not login_button.is_visible(timeout=5000):
+                    page.screenshot(path=f"no-submit-button-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
+                    raise Exception("Submit button not visible")
+                
                 login_button.click()
                 
                 # After submitting credentials
                 page.wait_for_load_state('networkidle')
                 page.wait_for_timeout(5000)  # Increased wait time
                 
+                # Take screenshot after login attempt
+                page.screenshot(path=f"post-login-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
+                
                 # Verify login success
                 if page.locator('button[name="idp"][value="LTA2"]').is_visible(timeout=2000):
-                    raise Exception("Login failed - still on login page")
+                    page.screenshot(path=f"login-failed-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
+                    raise Exception("Login failed - still on login page. Please check your credentials are correct and not wrapped in quotes.")
                 
                 logging.info("Login successful")
             
