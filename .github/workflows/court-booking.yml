@@ -19,6 +19,16 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     
+    - name: Add random delay
+      if: github.event_name == 'schedule'  # Only add delay for scheduled runs, not manual ones
+      run: |
+        # Calculate random delay between 11 and 66 minutes (to land between 5:45 and 6:40 AM)
+        MIN_DELAY=660  # 11 minutes in seconds
+        MAX_DELAY=3960  # 66 minutes in seconds
+        RANDOM_DELAY=$(( $RANDOM % (MAX_DELAY - MIN_DELAY + 1) + MIN_DELAY ))
+        echo "Adding random delay of $(( RANDOM_DELAY / 60 )) minutes"
+        sleep $RANDOM_DELAY
+    
     - name: Check if correct day for booking
       id: check_day
       run: |
