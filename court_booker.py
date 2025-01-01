@@ -45,6 +45,7 @@ def handle_cookie_consent(page):
 def navigate_to_correct_date(page, target_date):
     """
     Navigates to the correct booking date by modifying the URL directly.
+    Handles potential authentication loss during navigation.
     """
     logging.info(f"Navigating to date: {target_date.strftime('%Y-%m-%d')}")
     
@@ -63,16 +64,32 @@ def navigate_to_correct_date(page, target_date):
         page.wait_for_load_state('networkidle')
         page.wait_for_timeout(5000)  # Wait 5 seconds for any dynamic content
         
-        # Take a screenshot after navigation
-        page.screenshot(path=f"post-navigation-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
+        # Take a screenshot after initial navigation
+        page.screenshot(path=f"post-navigation-initial-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
         
-        # Verify we're on the correct date by checking URL
+        # Check if we're still on the login page
+        login_button = page.locator('button[name="idp"][value="LTA2"]')
+        if login_button.is_visible(timeout=2000):
+            logging.warning("Still on login page after navigation, session might be lost")
+            return False
+            
+        # Wait for the booking grid to be visible
+        booking_grid = page.locator('.booking-grid')
+        if not booking_grid.is_visible(timeout=10000):
+            logging.error("Booking grid not visible after navigation")
+            page.screenshot(path=f"no-booking-grid-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
+            return False
+            
+        # Take a final screenshot
+        page.screenshot(path=f"post-navigation-final-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
+        
+        # Verify we're on the correct date by checking URL and content
         current_url = page.url
-        if formatted_date in current_url:
+        if formatted_date in current_url and booking_grid.is_visible():
             logging.info(f"Successfully navigated to date {formatted_date}")
             return True
         else:
-            logging.error(f"Navigation failed - URL doesn't contain target date. Current URL: {current_url}")
+            logging.error(f"Navigation failed - URL doesn't contain target date or booking grid not visible. Current URL: {current_url}")
             return False
             
     except Exception as e:
@@ -85,12 +102,21 @@ def find_and_select_court(page, formatted_date, time_slot):
     """
     Attempts to find and book a court for the specified time slot.
     Checks Court 5 first, then 4, then 3 if necessary.
+    Returns (success, booking_details) tuple.
     """
     # Convert time (e.g., "19:00") to minutes since midnight for the booking system
     hour = int(time_slot.split(':')[0])
     minutes_since_midnight = hour * 60
     
     logging.info(f"Starting court selection process for {time_slot} slot...")
+    
+    booking_details = {
+        'time': time_slot,
+        'date': formatted_date,
+        'courts_checked': [],
+        'booked_court': None,
+        'status': 'Failed'
+    }
     
     try:
         # Define our courts in order of preference
@@ -101,6 +127,7 @@ def find_and_select_court(page, formatted_date, time_slot):
         ]
         
         for court_name, court_id in courts_to_try:
+            booking_details['courts_checked'].append(court_name)
             logging.info(f"\nChecking {court_name} availability...")
             
             try:
@@ -137,7 +164,9 @@ def find_and_select_court(page, formatted_date, time_slot):
                             
                             # Wait for confirmation
                             page.wait_for_timeout(2000)
-                            return True
+                            booking_details['booked_court'] = court_name
+                            booking_details['status'] = 'Success'
+                            return True, booking_details
                         else:
                             logging.warning("Final confirm button not visible")
                     else:
@@ -150,24 +179,36 @@ def find_and_select_court(page, formatted_date, time_slot):
                 continue
         
         logging.info(f"\nNo preferred courts available for booking at {time_slot}")
-        return False
+        return False, booking_details
         
     except Exception as e:
         logging.error(f"Error during court selection: {str(e)}")
         page.screenshot(path=f"error-booking-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
-        return False
+        return False, booking_details
 
 def attempt_booking(username_env_var, password_env_var, time_slot):
     """
     Attempts to make a booking for a specific user and time slot.
+    Returns booking details dictionary.
     """
+    booking_details = {
+        'username': username_env_var,
+        'time': time_slot,
+        'status': 'Failed',
+        'error': None,
+        'courts_checked': [],
+        'booked_court': None,
+        'date': None
+    }
+    
     # Get login credentials
     username = os.getenv(username_env_var)
     password = os.getenv(password_env_var)
     
     if not username or not password:
         logging.error(f"Missing credentials for {username_env_var}")
-        return False
+        booking_details['error'] = 'Missing credentials'
+        return booking_details
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True, slow_mo=1000)
@@ -178,62 +219,76 @@ def attempt_booking(username_env_var, password_env_var, time_slot):
             # Calculate target booking date
             booking_date = calculate_booking_date()
             formatted_date = booking_date.strftime('%Y-%m-%d')
+            booking_details['date'] = formatted_date
+            
+            def perform_login():
+                """Helper function to perform login"""
+                logging.info("Starting login process...")
+                page.wait_for_load_state('networkidle')
+                
+                logging.info("Clicking LTA login button...")
+                lta_login_button = page.locator('button[name="idp"][value="LTA2"]')
+                lta_login_button.click()
+                
+                logging.info("Entering login credentials...")
+                page.wait_for_load_state('networkidle')
+                page.wait_for_timeout(2000)
+                
+                username_input = page.locator('input[placeholder="Username"]')
+                username_input.fill(username)
+                page.wait_for_timeout(1000)
+                
+                password_input = page.locator('input[placeholder="Password"]')
+                password_input.fill(password)
+                page.wait_for_timeout(1000)
+                
+                logging.info("Submitting login form...")
+                login_button = page.get_by_role("button", name="Log in")
+                login_button.click()
+                
+                page.wait_for_load_state('networkidle')
+                page.wait_for_timeout(3000)
             
             # Start with the base URL for login
             base_url = "https://telfordparktennisclub.co.uk/Booking/BookByDate"
             logging.info(f"Starting booking attempt for {username_env_var} at {time_slot}")
             page.goto(base_url)
             
-            # Handle login process
-            logging.info("Starting login process...")
-            page.wait_for_load_state('networkidle')
-            
-            # Click LTA login button
-            logging.info("Clicking LTA login button...")
-            lta_login_button = page.locator('button[name="idp"][value="LTA2"]')
-            lta_login_button.click()
-            
-            # Enter credentials
-            logging.info("Entering login credentials...")
-            page.wait_for_load_state('networkidle')
-            page.wait_for_timeout(2000)
-            
-            username_input = page.locator('input[placeholder="Username"]')
-            username_input.fill(username)
-            page.wait_for_timeout(1000)
-            
-            password_input = page.locator('input[placeholder="Password"]')
-            password_input.fill(password)
-            page.wait_for_timeout(1000)
-            
-            # Submit login
-            logging.info("Submitting login form...")
-            login_button = page.get_by_role("button", name="Log in")
-            login_button.click()
-            
-            # Wait for login completion
-            page.wait_for_load_state('networkidle')
-            page.wait_for_timeout(3000)
+            # Initial login
+            perform_login()
             
             # After login completes, navigate to the correct date
             logging.info("Authentication complete, navigating to target date...")
             if not navigate_to_correct_date(page, booking_date):
-                raise Exception("Failed to navigate to target date")
+                # Check if we need to re-authenticate
+                login_button = page.locator('button[name="idp"][value="LTA2"]')
+                if login_button.is_visible(timeout=2000):
+                    logging.info("Session expired, performing re-authentication...")
+                    perform_login()
+                    # Try navigation again after re-auth
+                    if not navigate_to_correct_date(page, booking_date):
+                        raise Exception("Failed to navigate to target date after re-authentication")
+                else:
+                    raise Exception("Failed to navigate to target date")
             
             # Now proceed with court selection
-            success = find_and_select_court(page, formatted_date, time_slot)
+            success, court_details = find_and_select_court(page, formatted_date, time_slot)
+            booking_details.update(court_details)
+            
             if success:
                 logging.info(f"Court booking successful for {username_env_var} at {time_slot}!")
+                booking_details['status'] = 'Success'
             else:
                 logging.error(f"Could not book any preferred courts for {username_env_var} at {time_slot}")
                 page.screenshot(path=f"no-courts-available-{username_env_var}.png")
             
-            return success
+            return booking_details
             
         except Exception as e:
             logging.error(f"An error occurred for {username_env_var}: {str(e)}")
             page.screenshot(path=f"error-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
-            return False
+            booking_details['error'] = str(e)
+            return booking_details
         finally:
             page.wait_for_timeout(2000)
             browser.close()
@@ -274,16 +329,36 @@ def main():
         }
     ]
     
+    # Store all booking results
+    booking_results = []
+    
     # Attempt bookings for each configuration
     for config in booking_configs:
-        success = attempt_booking(
+        result = attempt_booking(
             config['username_env'],
             config['password_env'],
             config['time_slot']
         )
-        logging.info(f"Booking attempt for {config['username_env']} at {config['time_slot']}: {'Success' if success else 'Failed'}")
+        booking_results.append(result)
+        logging.info(f"Booking attempt for {config['username_env']} at {config['time_slot']}: {result['status']}")
         # Add a small delay between attempts
         time.sleep(2)
+    
+    # Write results to a file for the GitHub Action to read
+    with open('booking_results.txt', 'w') as f:
+        f.write("Sport Court Booking Results:\n\n")
+        for result in booking_results:
+            f.write(f"User: {result['username']}\n")
+            f.write(f"Date: {result['date']}\n")
+            f.write(f"Time: {result['time']}\n")
+            f.write(f"Status: {result['status']}\n")
+            if result['booked_court']:
+                f.write(f"Booked Court: {result['booked_court']}\n")
+            else:
+                f.write("Courts checked but unavailable: " + ", ".join(result['courts_checked']) + "\n")
+            if result['error']:
+                f.write(f"Error: {result['error']}\n")
+            f.write("\n")
 
 if __name__ == "__main__":
     main()

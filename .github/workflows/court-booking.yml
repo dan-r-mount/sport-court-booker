@@ -1,11 +1,11 @@
-name: Tennis Court Booking
+name: Sport Court Booking
 
 on:
   schedule:
     # Run at 4:34 UTC (5:34 GMT/BST in London) on Thursday and Saturday
     # This means it will run:
-    # - Every Thursday at 5:34 AM London time for Thursday evening bookings
-    # - Every Saturday at 5:34 AM London time for Saturday morning bookings
+    # - Every Thursday at 5:34 AM London time for Thursday evening bookings (7PM & 8PM)
+    # - Every Saturday at 5:34 AM London time for Saturday morning bookings (11AM & 12PM)
     - cron: '34 4 * * 4,6'
   workflow_dispatch:  # Allows manual triggering
 
@@ -16,32 +16,41 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     
+    - name: Check if correct day for booking
+      id: check_day
+      run: |
+        # Get current day (1-7, where 1 is Monday)
+        DAY=$(date +%u)
+        if [ "$DAY" = "4" ]; then
+          echo "IS_VALID_DAY=true" >> $GITHUB_ENV
+          echo "BOOKING_DAY=Thursday" >> $GITHUB_ENV
+          echo "BOOKING_TIME1=19:00" >> $GITHUB_ENV
+          echo "BOOKING_TIME2=20:00" >> $GITHUB_ENV
+        elif [ "$DAY" = "6" ]; then
+          echo "IS_VALID_DAY=true" >> $GITHUB_ENV
+          echo "BOOKING_DAY=Saturday" >> $GITHUB_ENV
+          echo "BOOKING_TIME1=11:00" >> $GITHUB_ENV
+          echo "BOOKING_TIME2=12:00" >> $GITHUB_ENV
+        else
+          echo "IS_VALID_DAY=false" >> $GITHUB_ENV
+          echo "Skipping court booking - not Thursday or Saturday"
+        fi
+    
     - name: Set up Python
+      if: env.IS_VALID_DAY == 'true'
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
     
     - name: Install dependencies
+      if: env.IS_VALID_DAY == 'true'
       run: |
         python -m pip install --upgrade pip
         pip install playwright python-dotenv
         playwright install chromium
         
-    - name: Set booking times based on day
-      run: |
-        if [ $(date +%u) -eq 4 ]; then
-          # Thursday - Set for evening slots (19:00 and 20:00)
-          echo "BOOKING_TIME1=19:00" >> $GITHUB_ENV
-          echo "BOOKING_TIME2=20:00" >> $GITHUB_ENV
-          echo "BOOKING_DAY=Thursday" >> $GITHUB_ENV
-        else
-          # Saturday - Set for morning slots (11:00 and 12:00)
-          echo "BOOKING_TIME1=11:00" >> $GITHUB_ENV
-          echo "BOOKING_TIME2=12:00" >> $GITHUB_ENV
-          echo "BOOKING_DAY=Saturday" >> $GITHUB_ENV
-        fi
-
     - name: Run booking script
+      if: env.IS_VALID_DAY == 'true'
       id: booking
       env:
         LTA_USERNAME: ${{ secrets.LTA_USERNAME }}
@@ -51,7 +60,7 @@ jobs:
       run: python court_booker.py
 
     - name: Upload screenshots
-      if: always()  # Run this step regardless of the outcome
+      if: env.IS_VALID_DAY == 'true'
       uses: actions/upload-artifact@v3
       with:
         name: booking-screenshots
@@ -59,24 +68,32 @@ jobs:
           *.png
         retention-days: 5
 
+    - name: Read booking results
+      if: env.IS_VALID_DAY == 'true'
+      id: results
+      run: |
+        if [ -f booking_results.txt ]; then
+          RESULTS=$(cat booking_results.txt)
+          echo "BOOKING_RESULTS<<EOF" >> $GITHUB_ENV
+          echo "$RESULTS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+        else
+          echo "BOOKING_RESULTS=No booking results file found" >> $GITHUB_ENV
+        fi
+
     - name: Send email notification
-      if: always()  # Run this step regardless of the outcome
+      if: env.IS_VALID_DAY == 'true'
       uses: dawidd6/action-send-mail@v3
       with:
         server_address: smtp.gmail.com
         server_port: 465
         username: ${{ secrets.EMAIL_USERNAME }}
         password: ${{ secrets.EMAIL_PASSWORD }}
-        subject: "Tennis Court Booking Results for ${{ env.BOOKING_DAY }}"
+        subject: "Sport Court Booking Results for ${{ env.BOOKING_DAY }}"
         body: |
-          Tennis Court Booking Results:
-          
-          Date: ${{ env.BOOKING_DAY }}
-          Times attempted: ${{ env.BOOKING_TIME1 }} and ${{ env.BOOKING_TIME2 }}
-          
-          Status: ${{ job.status }}
+          ${{ env.BOOKING_RESULTS }}
           
           For detailed results and any error screenshots, please check the GitHub Actions run:
           ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         to: ${{ secrets.NOTIFICATION_EMAILS }}
-        from: Tennis Court Booker 
+        from: Sport Court Booker 
