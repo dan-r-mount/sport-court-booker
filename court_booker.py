@@ -57,7 +57,8 @@ def navigate_to_correct_date(page, target_date):
         page.screenshot(path=f"pre-navigation-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
         
         # Navigate directly to the date using the full URL
-        full_url = f"https://telfordparktennisclub.co.uk/Booking/BookByDate#?date={formatted_date}&role=member"
+        base_url = os.getenv('BOOKING_URL', 'https://telfordparktennisclub.co.uk')
+        full_url = f"{base_url}/Booking/BookByDate#?date={formatted_date}&role=member"
         page.goto(full_url)
         
         # Wait for the page to load
@@ -250,9 +251,10 @@ def attempt_booking(username_env_var, password_env_var, time_slot):
                 page.wait_for_timeout(3000)
             
             # Start with the base URL for login
-            base_url = "https://telfordparktennisclub.co.uk/Booking/BookByDate"
+            base_url = os.getenv('BOOKING_URL', 'https://telfordparktennisclub.co.uk')
+            login_url = f"{base_url}/Booking/BookByDate"
             logging.info(f"Starting booking attempt for {username_env_var} at {time_slot}")
-            page.goto(base_url)
+            page.goto(login_url)
             
             # Initial login
             perform_login()
