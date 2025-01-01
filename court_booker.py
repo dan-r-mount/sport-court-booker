@@ -338,9 +338,11 @@ def attempt_booking(username_env_var, password_env_var, time_slot):
 def main():
     """
     Main function that coordinates multiple booking attempts.
-    Thursday: 19:00 and 20:00
-    Saturday: 11:00 and 12:00
-    Any other day (manual testing): Uses Thursday slots (19:00 and 20:00)
+    Regular schedule:
+    - Thursday: 19:00 and 20:00
+    - Saturday: 11:00 and 12:00
+    Test schedule (any other day):
+    - 12:00 and 13:00
     """
     load_dotenv()
     
@@ -353,10 +355,14 @@ def main():
         time_slot1 = '11:00'  # 11 AM
         time_slot2 = '12:00'  # 12 PM
         day_name = "Saturday"
-    else:  # Thursday or any other day (for testing)
+    elif current_day == 4:  # Thursday
         time_slot1 = '19:00'  # 7 PM
         time_slot2 = '20:00'  # 8 PM
-        day_name = "Thursday" if current_day == 4 else f"Test Day (using Thursday slots)"
+        day_name = "Thursday"
+    else:  # Any other day (for testing)
+        time_slot1 = '12:00'  # 12 PM
+        time_slot2 = '13:00'  # 1 PM
+        day_name = f"Test Day"
     
     logging.info(f"Running bookings for {day_name}")
     logging.info(f"Time slots: {time_slot1} and {time_slot2}")
