@@ -77,11 +77,11 @@ def navigate_to_correct_date(page, target_date):
             logging.warning("Still on login page after navigation, session might be lost")
             return False
             
-        # Wait for the booking grid to be visible
-        booking_grid = page.locator('.booking-grid')
-        if not booking_grid.is_visible(timeout=10000):
-            logging.error("Booking grid not visible after navigation")
-            page.screenshot(path=f"no-booking-grid-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
+        # Wait for the booking sheet to be visible (updated selector)
+        booking_sheet = page.locator('.booking-sheet')
+        if not booking_sheet.is_visible(timeout=10000):
+            logging.error("Booking sheet not visible after navigation")
+            page.screenshot(path=f"no-booking-sheet-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
             return False
             
         # Take a final screenshot
@@ -89,11 +89,11 @@ def navigate_to_correct_date(page, target_date):
         
         # Verify we're on the correct date by checking URL and content
         current_url = page.url
-        if formatted_date in current_url and booking_grid.is_visible():
+        if formatted_date in current_url and booking_sheet.is_visible():
             logging.info(f"Successfully navigated to date {formatted_date}")
             return True
         else:
-            logging.error(f"Navigation failed - URL doesn't contain target date or booking grid not visible. Current URL: {current_url}")
+            logging.error(f"Navigation failed - URL doesn't contain target date or booking sheet not visible. Current URL: {current_url}")
             return False
             
     except Exception as e:
