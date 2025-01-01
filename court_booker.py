@@ -52,28 +52,33 @@ def navigate_to_correct_date(page, target_date):
         # Format the date for the URL (YYYY-MM-DD)
         formatted_date = target_date.strftime('%Y-%m-%d')
         
-        # Wait for the booking page to be fully loaded first
-        page.wait_for_selector('h2.pull-left', timeout=10000)
+        # Take a screenshot before navigation
+        page.screenshot(path=f"pre-navigation-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
+        
+        # Navigate directly to the date using the full URL
+        full_url = f"https://telfordparktennisclub.co.uk/Booking/BookByDate#?date={formatted_date}&role=member"
+        page.goto(full_url)
+        
+        # Wait for the page to load
         page.wait_for_load_state('networkidle')
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(5000)  # Wait 5 seconds for any dynamic content
         
-        # Use evaluate to modify the URL and trigger the date change
-        js_code = f"""
-        window.location.hash = '?date={formatted_date}&role=member';
-        """
-        page.evaluate(js_code)
+        # Take a screenshot after navigation
+        page.screenshot(path=f"post-navigation-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
         
-        # Wait for the page to update
-        page.wait_for_load_state('networkidle')
-        page.wait_for_timeout(2000)
-        
-        # The date has been updated through the URL hash change
-        # We'll consider this successful as we saw the date update visually
-        return True
+        # Verify we're on the correct date by checking URL
+        current_url = page.url
+        if formatted_date in current_url:
+            logging.info(f"Successfully navigated to date {formatted_date}")
+            return True
+        else:
+            logging.error(f"Navigation failed - URL doesn't contain target date. Current URL: {current_url}")
+            return False
             
     except Exception as e:
         logging.error(f"Error navigating to date: {str(e)}")
-        page.screenshot(path="date-navigation-error.png")
+        # Take error screenshot
+        page.screenshot(path=f"navigation-error-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
         return False
 
 def find_and_select_court(page, formatted_date, time_slot):
@@ -236,13 +241,24 @@ def attempt_booking(username_env_var, password_env_var, time_slot):
 def main():
     """
     Main function that coordinates multiple booking attempts.
-    Uses environment variables for time slots which are set by GitHub Actions.
+    Thursday: 19:00 and 20:00
+    Saturday: 11:00 and 12:00
     """
     load_dotenv()
     
-    # Get time slots from environment (set by GitHub Actions)
-    time_slot1 = os.getenv('BOOKING_TIME1', '19:00')  # Default to 19:00 if not set
-    time_slot2 = os.getenv('BOOKING_TIME2', '20:00')  # Default to 20:00 if not set
+    # Determine if it's Thursday (4) or Saturday (6)
+    current_day = datetime.now().weekday() + 1  # 1-based weekday (1=Monday, 7=Sunday)
+    
+    # Set time slots based on the day
+    if current_day == 4:  # Thursday
+        time_slot1 = '19:00'  # 7 PM
+        time_slot2 = '20:00'  # 8 PM
+    else:  # Saturday
+        time_slot1 = '11:00'  # 11 AM
+        time_slot2 = '12:00'  # 12 PM
+    
+    logging.info(f"Running bookings for {'Thursday' if current_day == 4 else 'Saturday'}")
+    logging.info(f"Time slots: {time_slot1} and {time_slot2}")
     
     # Define booking configurations
     booking_configs = [
@@ -259,7 +275,6 @@ def main():
     ]
     
     # Attempt bookings for each configuration
-    first_booking_court = None
     for config in booking_configs:
         success = attempt_booking(
             config['username_env'],

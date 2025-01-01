@@ -33,13 +33,16 @@ jobs:
           # Thursday - Set for evening slots (19:00 and 20:00)
           echo "BOOKING_TIME1=19:00" >> $GITHUB_ENV
           echo "BOOKING_TIME2=20:00" >> $GITHUB_ENV
+          echo "BOOKING_DAY=Thursday" >> $GITHUB_ENV
         else
           # Saturday - Set for morning slots (11:00 and 12:00)
           echo "BOOKING_TIME1=11:00" >> $GITHUB_ENV
           echo "BOOKING_TIME2=12:00" >> $GITHUB_ENV
+          echo "BOOKING_DAY=Saturday" >> $GITHUB_ENV
         fi
 
     - name: Run booking script
+      id: booking
       env:
         LTA_USERNAME: ${{ secrets.LTA_USERNAME }}
         LTA_PASSWORD: ${{ secrets.LTA_PASSWORD }}
@@ -47,11 +50,33 @@ jobs:
         LTA_PASSWORD2: ${{ secrets.LTA_PASSWORD2 }}
       run: python court_booker.py
 
-    - name: Upload screenshots on failure
-      if: failure()
+    - name: Upload screenshots
+      if: always()  # Run this step regardless of the outcome
       uses: actions/upload-artifact@v3
       with:
-        name: error-screenshots
+        name: booking-screenshots
         path: |
           *.png
-        retention-days: 5 
+        retention-days: 5
+
+    - name: Send email notification
+      if: always()  # Run this step regardless of the outcome
+      uses: dawidd6/action-send-mail@v3
+      with:
+        server_address: smtp.gmail.com
+        server_port: 465
+        username: ${{ secrets.EMAIL_USERNAME }}
+        password: ${{ secrets.EMAIL_PASSWORD }}
+        subject: "Tennis Court Booking Results for ${{ env.BOOKING_DAY }}"
+        body: |
+          Tennis Court Booking Results:
+          
+          Date: ${{ env.BOOKING_DAY }}
+          Times attempted: ${{ env.BOOKING_TIME1 }} and ${{ env.BOOKING_TIME2 }}
+          
+          Status: ${{ job.status }}
+          
+          For detailed results and any error screenshots, please check the GitHub Actions run:
+          ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        to: ${{ secrets.NOTIFICATION_EMAILS }}
+        from: Tennis Court Booker 
