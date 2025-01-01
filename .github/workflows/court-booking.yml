@@ -2,11 +2,14 @@ name: Sport Court Booking
 
 on:
   schedule:
-    # Run at 4:34 UTC (5:34 GMT/BST in London) on Thursday and Saturday
+    # Regular schedule: Run at 4:34 UTC (5:34 GMT/BST in London) on Thursday and Saturday
     # This means it will run:
     # - Every Thursday at 5:34 AM London time for Thursday evening bookings (7PM & 8PM)
     # - Every Saturday at 5:34 AM London time for Saturday morning bookings (11AM & 12PM)
+    # Schedule is set using UTC time
     - cron: '34 4 * * 4,6'
+    # Special test run on January 1st at 5:34 AM London time
+    - cron: '34 4 1 1 *'
   workflow_dispatch:  # Allows manual triggering
 
 jobs:
@@ -19,9 +22,19 @@ jobs:
     - name: Check if correct day for booking
       id: check_day
       run: |
-        # Get current day (1-7, where 1 is Monday)
+        # Get current date components
         DAY=$(date +%u)
-        if [ "$DAY" = "4" ]; then
+        DATE=$(date +%d)
+        MONTH=$(date +%m)
+        
+        # Special case for January 1st test
+        if [ "$DATE" = "01" ] && [ "$MONTH" = "01" ]; then
+          echo "IS_VALID_DAY=true" >> $GITHUB_ENV
+          echo "BOOKING_DAY=Wednesday (Test)" >> $GITHUB_ENV
+          echo "BOOKING_TIME1=19:00" >> $GITHUB_ENV
+          echo "BOOKING_TIME2=20:00" >> $GITHUB_ENV
+        # Regular Thursday/Saturday check
+        elif [ "$DAY" = "4" ]; then
           echo "IS_VALID_DAY=true" >> $GITHUB_ENV
           echo "BOOKING_DAY=Thursday" >> $GITHUB_ENV
           echo "BOOKING_TIME1=19:00" >> $GITHUB_ENV
