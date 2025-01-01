@@ -197,6 +197,7 @@ def attempt_booking(username_env_var, password_env_var, time_slot):
     """
     booking_details = {
         'username': username_env_var,
+        'actual_username': os.getenv(username_env_var, 'Unknown'),  # Store actual username
         'time': time_slot,
         'status': 'Failed',
         'error': None,
@@ -397,7 +398,8 @@ def main():
     with open('booking_results.txt', 'w') as f:
         f.write("Sport Court Booking Results:\n\n")
         for result in booking_results:
-            f.write(f"User: {result['username']}\n")
+            f.write(f"Environment Variable: {result['username']}\n")
+            f.write(f"LTA Username: {result['actual_username']}\n")
             f.write(f"Date: {result['date']}\n")
             f.write(f"Time: {result['time']}\n")
             f.write(f"Status: {result['status']}\n")
