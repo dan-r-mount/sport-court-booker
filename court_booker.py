@@ -56,14 +56,17 @@ def navigate_to_correct_date(page, target_date):
         # Take a screenshot before navigation
         page.screenshot(path=f"pre-navigation-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
         
+        # Add session check before navigation
+        page.wait_for_load_state('networkidle')
+        page.wait_for_timeout(3000)
+        
         # Navigate directly to the date using the full URL
         base_url = os.getenv('BOOKING_URL', 'https://telfordparktennisclub.co.uk')
         full_url = f"{base_url}/Booking/BookByDate#?date={formatted_date}&role=member"
-        page.goto(full_url)
         
-        # Wait for the page to load
-        page.wait_for_load_state('networkidle')
-        page.wait_for_timeout(5000)  # Wait 5 seconds for any dynamic content
+        # Use softer navigation
+        page.goto(full_url, wait_until='networkidle')
+        page.wait_for_timeout(5000)
         
         # Take a screenshot after initial navigation
         page.screenshot(path=f"post-navigation-initial-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
@@ -231,10 +234,11 @@ def attempt_booking(username_env_var, password_env_var, time_slot):
                 lta_login_button = page.locator('button[name="idp"][value="LTA2"]')
                 lta_login_button.click()
                 
-                logging.info("Entering login credentials...")
+                # After clicking login button
                 page.wait_for_load_state('networkidle')
-                page.wait_for_timeout(2000)
+                page.wait_for_timeout(5000)  # Increased wait time
                 
+                logging.info("Entering login credentials...")
                 username_input = page.locator('input[placeholder="Username"]')
                 username_input.fill(username)
                 page.wait_for_timeout(1000)
@@ -247,8 +251,15 @@ def attempt_booking(username_env_var, password_env_var, time_slot):
                 login_button = page.get_by_role("button", name="Log in")
                 login_button.click()
                 
+                # After submitting credentials
                 page.wait_for_load_state('networkidle')
-                page.wait_for_timeout(3000)
+                page.wait_for_timeout(5000)  # Increased wait time
+                
+                # Verify login success
+                if page.locator('button[name="idp"][value="LTA2"]').is_visible(timeout=2000):
+                    raise Exception("Login failed - still on login page")
+                
+                logging.info("Login successful")
             
             # Start with the base URL for login
             base_url = os.getenv('BOOKING_URL', 'https://telfordparktennisclub.co.uk')
