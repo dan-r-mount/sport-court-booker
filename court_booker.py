@@ -102,10 +102,11 @@ def navigate_to_correct_date(page, target_date):
         page.screenshot(path=f"navigation-error-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
         return False
 
-def find_and_select_court(page, formatted_date, time_slot):
+def find_and_select_court(page, formatted_date, time_slot, preferred_court=None):
     """
     Attempts to find and book a court for the specified time slot.
-    Checks Court 5 first, then 4, then 3 if necessary.
+    If preferred_court is specified, tries that court first.
+    Then checks Court 5, 4, then 3 in order (skipping the preferred if already tried).
     Returns (success, booking_details) tuple.
     """
     # Convert time (e.g., "19:00") to minutes since midnight for the booking system
@@ -113,6 +114,8 @@ def find_and_select_court(page, formatted_date, time_slot):
     minutes_since_midnight = hour * 60
     
     logging.info(f"Starting court selection process for {time_slot} slot...")
+    if preferred_court:
+        logging.info(f"Will try {preferred_court} first as it was booked by the first user")
     
     booking_details = {
         'time': time_slot,
@@ -124,11 +127,22 @@ def find_and_select_court(page, formatted_date, time_slot):
     
     try:
         # Define our courts in order of preference
-        courts_to_try = [
+        standard_courts = [
             ('Court 5', '7669fa63-1862-48a6-98ac-59527ed398f9'),
             ('Court 4', '8cce54b0-bef5-4258-a732-6c20bed0953c'),
             ('Court 3', '3af2c6ce-1577-45c4-9cd3-764bb6f3f0f8')
         ]
+        
+        # If we have a preferred court, try it first
+        courts_to_try = []
+        if preferred_court:
+            # Find the preferred court details
+            preferred_court_details = next((court for court in standard_courts if court[0] == preferred_court), None)
+            if preferred_court_details:
+                courts_to_try.append(preferred_court_details)
+        
+        # Add remaining courts in standard order (excluding the preferred court if it exists)
+        courts_to_try.extend([court for court in standard_courts if court[0] not in [c[0] for c in courts_to_try]])
         
         for court_name, court_id in courts_to_try:
             booking_details['courts_checked'].append(court_name)
@@ -182,7 +196,7 @@ def find_and_select_court(page, formatted_date, time_slot):
                 logging.warning(f"Error checking {court_name}: {str(e)}")
                 continue
         
-        logging.info(f"\nNo preferred courts available for booking at {time_slot}")
+        logging.info(f"\nNo courts available for booking at {time_slot}")
         return False, booking_details
         
     except Exception as e:
@@ -190,7 +204,7 @@ def find_and_select_court(page, formatted_date, time_slot):
         page.screenshot(path=f"error-booking-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
         return False, booking_details
 
-def attempt_booking(username_env_var, password_env_var, time_slot):
+def attempt_booking(username_env_var, password_env_var, time_slot, preferred_court=None):
     """
     Attempts to make a booking for a specific user and time slot.
     Returns booking details dictionary.
@@ -315,7 +329,7 @@ def attempt_booking(username_env_var, password_env_var, time_slot):
                     raise Exception("Failed to navigate to target date")
             
             # Now proceed with court selection
-            success, court_details = find_and_select_court(page, formatted_date, time_slot)
+            success, court_details = find_and_select_court(page, formatted_date, time_slot, preferred_court)
             booking_details.update(court_details)
             
             if success:
@@ -365,34 +379,26 @@ def main():
     logging.info(f"Running bookings for {day_name}")
     logging.info(f"Time slots: {time_slot1} and {time_slot2}")
     
-    # Define booking configurations
-    booking_configs = [
-        {
-            'username_env': 'LTA_USERNAME',
-            'password_env': 'LTA_PASSWORD',
-            'time_slot': time_slot1
-        },
-        {
-            'username_env': 'LTA_USERNAME2',
-            'password_env': 'LTA_PASSWORD2',
-            'time_slot': time_slot2
-        }
-    ]
-    
     # Store all booking results
     booking_results = []
     
-    # Attempt bookings for each configuration
-    for config in booking_configs:
-        result = attempt_booking(
-            config['username_env'],
-            config['password_env'],
-            config['time_slot']
-        )
-        booking_results.append(result)
-        logging.info(f"Booking attempt for {config['username_env']} at {config['time_slot']}: {result['status']}")
-        # Add a small delay between attempts
-        time.sleep(2)
+    # First booking attempt
+    first_booking = attempt_booking('LTA_USERNAME', 'LTA_PASSWORD', time_slot1)
+    booking_results.append(first_booking)
+    logging.info(f"First booking attempt result: {first_booking['status']}")
+    
+    # Get the court that was booked in the first attempt (if successful)
+    preferred_court = first_booking.get('booked_court') if first_booking['status'] == 'Success' else None
+    if preferred_court:
+        logging.info(f"First user booked {preferred_court}, second user will try this court first")
+    
+    # Add a small delay between attempts
+    time.sleep(2)
+    
+    # Second booking attempt with preferred court information
+    second_booking = attempt_booking('LTA_USERNAME2', 'LTA_PASSWORD2', time_slot2, preferred_court)
+    booking_results.append(second_booking)
+    logging.info(f"Second booking attempt result: {second_booking['status']}")
     
     # Write results to a file for the GitHub Action to read
     with open('booking_results.txt', 'w') as f:
