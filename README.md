@@ -21,7 +21,7 @@ The system runs automatically at the following times:
 2. Click the "+" icon in the top right corner
 3. Select "New repository"
 4. Name it something like "tennis-court-booker"
-5. Make it Private (to keep your credentials secure)
+5. Make it Public (to enable easier monitoring of GitHub Actions)
 6. Click "Create repository"
 7. Once created, upload all the files from this project to your new repository:
    - `court_booker.py`
@@ -59,14 +59,16 @@ The system runs automatically at the following times:
 2. You should see the "Tennis Court Booking" workflow
 3. Click "Enable workflow"
 
-The GitHub Actions workflow will now automatically run at 7:00 AM UTC on Thursdays and Saturdays.
+The GitHub Actions workflow will now automatically run at 4:34 AM UTC (5:34 AM BST/GMT) on Thursdays and Saturdays, with a random delay between 5:45 AM and 6:40 AM BST/GMT for the actual booking attempt.
 
 ## Email Notifications
 
 After each run (successful or failed), the system will send an email containing:
 - The day of booking (Thursday/Saturday)
-- Attempted booking times
-- Results of each booking attempt
+- The date that the court has been booked for
+- The court number that has been booked
+- The actual LTA username that booked the court
+- If any courts couldn't be booked, which courts were considered
 - Link to the detailed GitHub Actions logs
 
 ## Manual Trigger
@@ -86,12 +88,23 @@ The workflow logs will show:
 
 ## Court Preferences
 
-The system tries to book courts in the following order:
+The system uses a smart court selection strategy:
+
+### First Booking (7 PM Thursday/11 AM Saturday)
+The system tries to book courts in this order:
 1. Court 5 (preferred)
 2. Court 4
 3. Court 3
 
-For the second booking (8 PM Thursday/12 PM Saturday), it will attempt to book the same court as the first booking if possible.
+### Second Booking (8 PM Thursday/12 PM Saturday)
+For the second booking, the system prioritizes continuity:
+1. First tries to book the same court that was successfully booked for the first slot
+2. If that's not available, follows the standard preference order:
+   - Court 5
+   - Court 4
+   - Court 3
+
+This ensures that when possible, both time slots are booked on the same court, avoiding the need to switch courts between games.
 
 ## Troubleshooting
 
