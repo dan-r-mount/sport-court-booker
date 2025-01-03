@@ -404,7 +404,6 @@ def main():
     with open('booking_results.txt', 'w') as f:
         f.write("Sport Court Booking Results:\n\n")
         for result in booking_results:
-            f.write(f"Environment Variable: {result['username']}\n")
             f.write(f"LTA Username: {result['actual_username']}\n")
             f.write(f"Date: {result['date']}\n")
             f.write(f"Time: {result['time']}\n")
