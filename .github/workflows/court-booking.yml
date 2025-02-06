@@ -90,6 +90,8 @@ jobs:
         path: |
           *.png
         retention-days: 5
+        compression-level: 6  # Optional: Added for better compression
+        overwrite: true      # Optional: Will overwrite if artifact exists
 
     - name: Read booking results
       if: env.IS_VALID_DAY == 'true'
