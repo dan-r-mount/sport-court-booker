@@ -84,7 +84,7 @@ jobs:
 
     - name: Upload screenshots
       if: env.IS_VALID_DAY == 'true'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: booking-screenshots
         path: |
