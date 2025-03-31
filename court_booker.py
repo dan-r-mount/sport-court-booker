@@ -106,7 +106,7 @@ def find_and_select_court(page, formatted_date, time_slot, preferred_court=None)
     """
     Attempts to find and book a court for the specified time slot.
     If preferred_court is specified, tries that court first.
-    Then checks Court 5, 4, then 3 in order (skipping the preferred if already tried).
+    Then checks courts in order of preference: 5, 4, 3, 2, 1
     Returns (success, booking_details) tuple.
     """
     # Convert time (e.g., "19:00") to minutes since midnight for the booking system
@@ -130,7 +130,9 @@ def find_and_select_court(page, formatted_date, time_slot, preferred_court=None)
         standard_courts = [
             ('Court 5', '7669fa63-1862-48a6-98ac-59527ed398f9'),
             ('Court 4', '8cce54b0-bef5-4258-a732-6c20bed0953c'),
-            ('Court 3', '3af2c6ce-1577-45c4-9cd3-764bb6f3f0f8')
+            ('Court 3', '3af2c6ce-1577-45c4-9cd3-764bb6f3f0f8'),
+            ('Court 2', '0ba85731-b946-4101-9427-c9ed310ad8b9'),
+            ('Court 1', 'e541557c-c72f-4cef-adb3-285b2bf99f02')
         ]
         
         # If we have a preferred court, try it first
