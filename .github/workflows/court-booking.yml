@@ -131,24 +131,27 @@ jobs:
         password: ${{ secrets.EMAIL_PASSWORD }}
         subject: "Telford Park Tennis Court Booking Results - ${{ env.BOOKING_DAY }} ${{ env.BOOKING_TIME1 }}-${{ env.BOOKING_TIME2 }}"
         body: |
-          Tennis Court Booking Results
-          ===========================
-          Date: ${{ env.BOOKING_DAY }}
-          Time: ${{ env.BOOKING_TIME1 }}-${{ env.BOOKING_TIME2 }}
-          
+          Hi team,
+
+          I've just attempted to book the courts for you. Here's what happened:
+
           Booking Details:
           ----------------
           ${{ env.BOOKING_RESULTS }}
-          
+
           Additional Information:
           ----------------------
-          - Booking was attempted for courts 5, 4, 3, 2, and 1 in order of preference
-          - If a court was booked for the first hour, the same court was attempted for the second hour
-          - Booking was attempted at ${{ github.event_name == 'schedule' && 'scheduled time' || 'manual trigger' }}
-          
-          For detailed results and any error screenshots, please check the GitHub Actions run:
+          - I tried to book courts 5, 4, 3, 2, and 1 in order of preference
+          - If I got a court for the first hour, I tried to get the same one for the second hour
+          - This was an automated booking attempt at ${{ github.event_name == 'schedule' && 'scheduled time' || 'manual trigger' }}
+
+          If you need to check the full details or see any error screenshots, you can find them here:
           ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          
-          Note: If you need to cancel or modify any bookings, please do so through the Telford Park Tennis Club website.
+
+          Remember: If you need to cancel or change any bookings, you'll need to do that through the Telford Park Tennis Club website.
+
+          Best regards,
+          Dan's Booking Team
+          (on behalf of ${{ secrets.BOOKING_NAMES }})
         to: ${{ secrets.NOTIFICATION_EMAILS }}
-        from: Mens 1st Team Court Booking Admin Team 
+        from: Dan's Booking Team 
