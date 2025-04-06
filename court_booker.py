@@ -358,7 +358,6 @@ def main():
     Schedule:
     - Thursday: 19:00 and 20:00
     - Saturday: 11:00 and 12:00
-    - Manual trigger: Uses 19:00 and 20:00 time slots
     """
     load_dotenv()
     
@@ -366,25 +365,27 @@ def main():
     current_date = datetime.now()
     current_day = current_date.weekday() + 1  # 1-based weekday (1=Monday, 7=Sunday)
     
-    # Check if this is a manual trigger (set by GitHub Actions)
-    is_manual_trigger = os.getenv('MANUAL_TRIGGER', 'false').lower() == 'true'
+    # Define time slots for each day
+    time_slots = {
+        4: {  # Thursday
+            'day_name': 'Thursday',
+            'slots': ('19:00', '20:00')
+        },
+        6: {  # Saturday
+            'day_name': 'Saturday',
+            'slots': ('11:00', '12:00')
+        }
+    }
     
-    # Set time slots based on the day or trigger type
-    if is_manual_trigger:
-        time_slot1 = '19:00'  # 7 PM
-        time_slot2 = '20:00'  # 8 PM
-        day_name = "Manual Trigger"
-    elif current_day == 6:  # Saturday
-        time_slot1 = '11:00'  # 11 AM
-        time_slot2 = '12:00'  # 12 PM
-        day_name = "Saturday"
-    elif current_day == 4:  # Thursday
-        time_slot1 = '19:00'  # 7 PM
-        time_slot2 = '20:00'  # 8 PM
-        day_name = "Thursday"
-    else:
+    # Check if today is a booking day
+    if current_day not in time_slots:
         logging.info("Not Thursday or Saturday - no bookings needed")
         return
+    
+    # Get the time slots for today
+    day_info = time_slots[current_day]
+    time_slot1, time_slot2 = day_info['slots']
+    day_name = day_info['day_name']
     
     logging.info(f"Running bookings for {day_name}")
     logging.info(f"Time slots: {time_slot1} and {time_slot2}")

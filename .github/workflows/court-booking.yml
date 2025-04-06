@@ -24,29 +24,20 @@ jobs:
         # Get current day of week (1-7, where 1 is Monday)
         DAY=$(date +%u)
         
-        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-          # For manual triggers, always proceed and calculate date two weeks ahead
+        # Regular Thursday/Saturday check
+        if [ "$DAY" = "4" ]; then
           echo "IS_VALID_DAY=true" >> $GITHUB_ENV
-          echo "BOOKING_DAY=Manual Trigger" >> $GITHUB_ENV
+          echo "BOOKING_DAY=Thursday" >> $GITHUB_ENV
           echo "BOOKING_TIME1=19:00" >> $GITHUB_ENV
           echo "BOOKING_TIME2=20:00" >> $GITHUB_ENV
-          echo "MANUAL_TRIGGER=true" >> $GITHUB_ENV
+        elif [ "$DAY" = "6" ]; then
+          echo "IS_VALID_DAY=true" >> $GITHUB_ENV
+          echo "BOOKING_DAY=Saturday" >> $GITHUB_ENV
+          echo "BOOKING_TIME1=11:00" >> $GITHUB_ENV
+          echo "BOOKING_TIME2=12:00" >> $GITHUB_ENV
         else
-          # Regular Thursday/Saturday check for scheduled runs
-          if [ "$DAY" = "4" ]; then
-            echo "IS_VALID_DAY=true" >> $GITHUB_ENV
-            echo "BOOKING_DAY=Thursday" >> $GITHUB_ENV
-            echo "BOOKING_TIME1=19:00" >> $GITHUB_ENV
-            echo "BOOKING_TIME2=20:00" >> $GITHUB_ENV
-          elif [ "$DAY" = "6" ]; then
-            echo "IS_VALID_DAY=true" >> $GITHUB_ENV
-            echo "BOOKING_DAY=Saturday" >> $GITHUB_ENV
-            echo "BOOKING_TIME1=11:00" >> $GITHUB_ENV
-            echo "BOOKING_TIME2=12:00" >> $GITHUB_ENV
-          else
-            echo "IS_VALID_DAY=false" >> $GITHUB_ENV
-            echo "Skipping court booking - not Thursday or Saturday"
-          fi
+          echo "IS_VALID_DAY=false" >> $GITHUB_ENV
+          echo "Skipping court booking - not Thursday or Saturday"
         fi
     
     - name: Add random delay
