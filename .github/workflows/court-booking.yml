@@ -8,7 +8,7 @@ on:
     # - Every Thursday at 4:34 AM UTC (5:34 AM BST)
     # Schedule is set using UTC time
     - cron: '0 23 * * 5'  # Friday at 11:00 PM UTC (12:00 AM BST Saturday)
-    - cron: '34 4 * * 4' # Thursday at 4:34 AM UTC
+    - cron: '34 4 * * 4'  # Thursday at 4:34 AM UTC (5:34 AM BST)
   workflow_dispatch:  # Allows manual triggering
 
 jobs:
