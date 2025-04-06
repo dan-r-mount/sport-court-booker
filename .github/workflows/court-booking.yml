@@ -9,10 +9,6 @@ on:
     # Schedule is set using UTC time
     - cron: '0 23 * * 5'  # Friday at 11:00 PM UTC (12:00 AM BST Saturday)
     - cron: '34 4 * * 4' # Thursday at 4:34 AM UTC
-    # Special test run on January 1st at 5:34 AM London time
-    - cron: '34 4 1 1 *'
-    # One-time test run for April 5th, 2025 at 11:00 PM UTC (12:00 AM BST April 6th)
-    - cron: '0 23 5 4 *'  # Will run on April 5th at 11:00 PM UTC
   workflow_dispatch:  # Allows manual triggering
 
 jobs:
@@ -22,56 +18,14 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     
-    - name: Add random delay
-      if: github.event_name == 'schedule'  # Only add delay for scheduled runs, not manual ones
-      run: |
-        # Get current day of week (1-7, where 1 is Monday)
-        DAY=$(date +%u)
-        # Get current date in YYYY-MM-DD format
-        CURRENT_DATE=$(date +%Y-%m-%d)
-        
-        if [ "$CURRENT_DATE" = "2025-04-05" ]; then
-          # Test run on April 5th, 2025: delay between 10 seconds and 85 seconds
-          MIN_DELAY=10    # 10 seconds
-          MAX_DELAY=85   # 85 seconds
-          RANDOM_DELAY=$(( $RANDOM % (MAX_DELAY - MIN_DELAY + 1) + MIN_DELAY ))
-          echo "Test run for April 5th, 2025: Adding random delay of $RANDOM_DELAY seconds"
-          echo "Current time: $(date)"
-          echo "Will run booking in $RANDOM_DELAY seconds"
-        elif [ "$DAY" = "5" ]; then
-          # Friday night (for Saturday booking): delay between 10 seconds and 85 seconds
-          MIN_DELAY=10    # 10 seconds
-          MAX_DELAY=85   # 85 seconds
-          RANDOM_DELAY=$(( $RANDOM % (MAX_DELAY - MIN_DELAY + 1) + MIN_DELAY ))
-          echo "Saturday booking: Adding random delay of $RANDOM_DELAY seconds"
-          echo "Current time: $(date)"
-          echo "Will run booking in $RANDOM_DELAY seconds"
-        elif [ "$DAY" = "4" ]; then
-          # Thursday: delay between 15 minutes and 26 minutes (to land between 5:49 and 6:00 AM)
-          MIN_DELAY=900   # 15 minutes in seconds
-          MAX_DELAY=1560  # 26 minutes in seconds
-          RANDOM_DELAY=$(( $RANDOM % (MAX_DELAY - MIN_DELAY + 1) + MIN_DELAY ))
-          echo "Thursday booking: Adding random delay of $(( RANDOM_DELAY / 60 )) minutes"
-        fi
-        
-        sleep $RANDOM_DELAY
-    
     - name: Check if correct day for booking
       id: check_day
       run: |
-        # Get current date components
+        # Get current day of week (1-7, where 1 is Monday)
         DAY=$(date +%u)
-        DATE=$(date +%d)
-        MONTH=$(date +%m)
         
-        # Special case for January 1st test
-        if [ "$DATE" = "01" ] && [ "$MONTH" = "01" ]; then
-          echo "IS_VALID_DAY=true" >> $GITHUB_ENV
-          echo "BOOKING_DAY=Wednesday (Test)" >> $GITHUB_ENV
-          echo "BOOKING_TIME1=19:00" >> $GITHUB_ENV
-          echo "BOOKING_TIME2=20:00" >> $GITHUB_ENV
         # Regular Thursday/Saturday check
-        elif [ "$DAY" = "4" ]; then
+        if [ "$DAY" = "4" ]; then
           echo "IS_VALID_DAY=true" >> $GITHUB_ENV
           echo "BOOKING_DAY=Thursday" >> $GITHUB_ENV
           echo "BOOKING_TIME1=19:00" >> $GITHUB_ENV
@@ -85,6 +39,19 @@ jobs:
           echo "IS_VALID_DAY=false" >> $GITHUB_ENV
           echo "Skipping court booking - not Thursday or Saturday"
         fi
+    
+    - name: Add random delay
+      if: env.IS_VALID_DAY == 'true' && github.event_name == 'schedule'  # Only add delay for scheduled runs on valid booking days
+      run: |
+        # Add random delay between 30 and 85 seconds for all scheduled runs
+        MIN_DELAY=30    # 30 seconds
+        MAX_DELAY=85    # 85 seconds
+        RANDOM_DELAY=$(( $RANDOM % (MAX_DELAY - MIN_DELAY + 1) + MIN_DELAY ))
+        echo "Adding random delay of $RANDOM_DELAY seconds"
+        echo "Current time: $(date)"
+        echo "Will run booking in $RANDOM_DELAY seconds"
+        
+        sleep $RANDOM_DELAY
     
     - name: Set up Python
       if: env.IS_VALID_DAY == 'true'
@@ -145,25 +112,15 @@ jobs:
         body: |
           Hi team,
 
-          I've just attempted to book the courts for you. Here's what happened:
+          I've just attempted to book the courts for you. Here's what I managed to do:
 
           Booking Details:
           ----------------
           ${{ env.BOOKING_RESULTS }}
 
-          Additional Information:
-          ----------------------
-          - I tried to book courts 5, 4, 3, 2, and 1 in order of preference
-          - If I got a court for the first hour, I tried to get the same one for the second hour
-          - This was an automated booking attempt at ${{ github.event_name == 'schedule' && 'scheduled time' || 'manual trigger' }}
-
-          If you need to check the full details or see any error screenshots, you can find them here:
-          ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
           Remember: If you need to cancel or change any bookings, you'll need to do that through the Telford Park Tennis Club website.
 
           Best regards,
-          Dan's Booking Team
-          (on behalf of ${{ secrets.BOOKING_NAMES }})
+          Dan's Offshore Booking Team
         to: ${{ secrets.NOTIFICATION_EMAILS }}
-        from: Dan's Booking Team 
+        from: Dan's Offshore Booking Team 
