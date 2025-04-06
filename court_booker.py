@@ -358,6 +358,7 @@ def main():
     Schedule:
     - Thursday: 19:00 and 20:00
     - Saturday: 11:00 and 12:00
+    - Manual trigger: Uses 19:00 and 20:00 time slots
     """
     load_dotenv()
     
@@ -365,8 +366,15 @@ def main():
     current_date = datetime.now()
     current_day = current_date.weekday() + 1  # 1-based weekday (1=Monday, 7=Sunday)
     
-    # Set time slots based on the day
-    if current_day == 6:  # Saturday
+    # Check if this is a manual trigger (set by GitHub Actions)
+    is_manual_trigger = os.getenv('MANUAL_TRIGGER', 'false').lower() == 'true'
+    
+    # Set time slots based on the day or trigger type
+    if is_manual_trigger:
+        time_slot1 = '19:00'  # 7 PM
+        time_slot2 = '20:00'  # 8 PM
+        day_name = "Manual Trigger"
+    elif current_day == 6:  # Saturday
         time_slot1 = '11:00'  # 11 AM
         time_slot2 = '12:00'  # 12 PM
         day_name = "Saturday"
