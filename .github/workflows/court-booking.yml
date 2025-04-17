@@ -24,13 +24,16 @@ jobs:
         # Get current day of week (1-7, where 1 is Monday)
         DAY=$(date +%u)
         
-        # Regular Thursday/Saturday check
+        # For Friday night cron job that runs at 11:00 PM UTC (12:00 AM BST Saturday)
+        # We need to check if it's day 5 (Friday) but treat it as Saturday booking
         if [ "$DAY" = "4" ]; then
+          # Thursday case
           echo "IS_VALID_DAY=true" >> $GITHUB_ENV
           echo "BOOKING_DAY=Thursday" >> $GITHUB_ENV
           echo "BOOKING_TIME1=19:00" >> $GITHUB_ENV
           echo "BOOKING_TIME2=20:00" >> $GITHUB_ENV
-        elif [ "$DAY" = "6" ]; then
+        elif [ "$DAY" = "5" ]; then
+          # Friday night (11:00 PM UTC) is midnight Saturday in BST
           echo "IS_VALID_DAY=true" >> $GITHUB_ENV
           echo "BOOKING_DAY=Saturday" >> $GITHUB_ENV
           echo "BOOKING_TIME1=11:00" >> $GITHUB_ENV
