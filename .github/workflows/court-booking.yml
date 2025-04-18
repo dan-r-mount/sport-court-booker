@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     # The day checker serves as a secondary safeguard to the cron schedule.
     # While the cron schedule ensures the workflow runs on specific days,
@@ -63,18 +63,36 @@ jobs:
         
         sleep $RANDOM_DELAY
     
+    # Only proceed with setting up Python and dependencies if it's a valid booking day
     - name: Set up Python
       if: env.IS_VALID_DAY == 'true'
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
+        cache: 'pip'  # Enable pip caching
+    
+    # Cache Playwright browsers to avoid reinstalling each time
+    - name: Cache Playwright browsers
+      if: env.IS_VALID_DAY == 'true'
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}-chromium
+        restore-keys: |
+          playwright-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}-
+          playwright-${{ runner.os }}-
     
     - name: Install dependencies
       if: env.IS_VALID_DAY == 'true'
       run: |
         python -m pip install --upgrade pip
         pip install playwright python-dotenv
-        playwright install chromium
+        # Only install Chromium with minimal dependencies if it's not already cached
+        if [ ! -d ~/.cache/ms-playwright/chromium-* ]; then
+          playwright install chromium --with-deps
+        else
+          echo "Using cached Playwright browsers"
+        fi
         
     - name: Run booking script
       if: env.IS_VALID_DAY == 'true'
@@ -86,21 +104,11 @@ jobs:
         LTA_PASSWORD2: ${{ secrets.LTA_PASSWORD2 }}
       run: python court_booker.py
 
-    - name: Upload screenshots
-      if: env.IS_VALID_DAY == 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: booking-screenshots
-        path: |
-          *.png
-        retention-days: 5
-        compression-level: 6  # Optional: Added for better compression
-        overwrite: true      # Optional: Will overwrite if artifact exists
-
-    - name: Read booking results
+    - name: Upload screenshots and read results
       if: env.IS_VALID_DAY == 'true'
       id: results
       run: |
+        # First handle the booking results
         if [ -f booking_results.txt ]; then
           RESULTS=$(cat booking_results.txt)
           echo "BOOKING_RESULTS<<EOF" >> $GITHUB_ENV
@@ -109,6 +117,17 @@ jobs:
         else
           echo "BOOKING_RESULTS=No booking results file found" >> $GITHUB_ENV
         fi
+      
+    - name: Upload screenshots
+      if: env.IS_VALID_DAY == 'true' && hashFiles('*.png') != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: booking-screenshots-${{ github.run_id }}
+        path: |
+          *.png
+        retention-days: 5
+        compression-level: 9  # Maximum compression
+        overwrite: true      # Overwrite if artifact exists
 
     - name: Send email notification
       if: env.IS_VALID_DAY == 'true'
