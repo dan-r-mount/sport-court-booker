@@ -1,4 +1,4 @@
-# Tennis Court Booking Automation
+# Sport Court Booking Automation
 
 This repository contains an automated system for booking tennis courts at Telford Park Tennis Club. The system uses GitHub Actions to automatically book courts every Thursday and Saturday for two weeks in advance.
 
@@ -7,12 +7,33 @@ This repository contains an automated system for booking tennis courts at Telfor
 The system runs automatically at the following times:
 
 ### Thursday Bookings
+- Runs at 4:34 AM UTC (5:34 AM BST/GMT) on Thursdays
 - User 1: Books a court for 7 PM (two weeks ahead)
 - User 2: Books a court for 8 PM (two weeks ahead)
 
 ### Saturday Bookings
+- Runs at 11:00 PM UTC Friday (12:00 AM BST/GMT Saturday) 
 - User 1: Books a court for 11 AM (two weeks ahead)
 - User 2: Books a court for 12 PM (two weeks ahead)
+
+## System Design
+
+### Scheduling and Validation
+The system uses two mechanisms to ensure bookings happen correctly:
+
+1. **GitHub Actions Cron Schedule**:
+   - Determines when the workflow runs
+   - Thursday schedule: `cron: '34 4 * * 4'` (4:34 AM UTC / 5:34 AM BST Thursday)
+   - Saturday schedule: `cron: '0 23 * * 5'` (11:00 PM UTC Friday / 12:00 AM BST Saturday)
+
+2. **Day Validation Check**:
+   - Acts as a secondary safeguard to verify the correct day
+   - Sets the appropriate booking times based on the day
+   - Handles time zone differences (Friday night UTC = Saturday morning BST)
+   - Enables safe manual triggering through the GitHub Actions interface
+   - Prevents incorrect bookings if someone modifies the schedule
+
+This dual-layer approach ensures maximum reliability and flexibility, allowing both automated and manual booking attempts.
 
 ## Setup
 
@@ -20,7 +41,7 @@ The system runs automatically at the following times:
 1. Go to [github.com](https://github.com) and sign in (or create an account if you don't have one)
 2. Click the "+" icon in the top right corner
 3. Select "New repository"
-4. Name it something like "tennis-court-booker"
+4. Name it something like "sport-court-booker"
 5. Make it Public (to enable easier monitoring of GitHub Actions)
 6. Click "Create repository"
 7. Once created, upload all the files from this project to your new repository:
@@ -56,10 +77,10 @@ The system runs automatically at the following times:
 
 ### 3. Enable GitHub Actions
 1. Go to the "Actions" tab in your repository
-2. You should see the "Tennis Court Booking" workflow
+2. You should see the "Sport Court Booking" workflow
 3. Click "Enable workflow"
 
-The GitHub Actions workflow will now automatically run at 4:34 AM UTC (5:34 AM BST/GMT) on Thursdays and Saturdays, with a random delay between 5:45 AM and 6:40 AM BST/GMT for the actual booking attempt.
+The GitHub Actions workflow will now automatically run at the scheduled times with a random delay between 10 and 30 seconds for the actual booking attempt.
 
 ## Email Notifications
 
@@ -69,14 +90,15 @@ After each run (successful or failed), the system will send an email containing:
 - The court number that has been booked
 - The actual LTA username that booked the court
 - If any courts couldn't be booked, which courts were considered
-- Link to the detailed GitHub Actions logs
 
 ## Manual Trigger
 
 You can also trigger the booking process manually:
 1. Go to the "Actions" tab in your repository
-2. Select the "Tennis Court Booking" workflow
+2. Select the "Sport Court Booking" workflow
 3. Click "Run workflow"
+
+When manually triggered, the day checker will verify the current day and set the appropriate booking times based on whether it's Thursday or Saturday. If it's neither Thursday nor Saturday, the workflow will exit without attempting to book.
 
 ## Logs
 
@@ -117,5 +139,4 @@ If the workflow fails:
 ### Common Email Issues:
 - Make sure you're using an App Password, not your regular Gmail password
 - Verify the email addresses in `NOTIFICATION_EMAILS` are correctly formatted
-- Check your spam folder for notifications
-- Ensure the Gmail account has "Less secure app access" enabled 
+- Check your spam folder for notifications 

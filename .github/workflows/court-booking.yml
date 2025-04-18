@@ -18,6 +18,13 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     
+    # The day checker serves as a secondary safeguard to the cron schedule.
+    # While the cron schedule ensures the workflow runs on specific days,
+    # this check provides additional protection for:
+    # 1. Manual triggers through workflow_dispatch
+    # 2. Handling time zone differences (Friday night UTC = Saturday BST)
+    # 3. Preventing issues if someone modifies the cron schedule
+    # 4. Setting the appropriate time slots based on the day
     - name: Check if correct day for booking
       id: check_day
       run: |
