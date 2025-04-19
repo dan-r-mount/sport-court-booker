@@ -71,7 +71,7 @@ jobs:
           echo "BOOKING_DAY=Thursday" >> $GITHUB_ENV
           echo "BOOKING_TIME1=19:00" >> $GITHUB_ENV
           echo "BOOKING_TIME2=20:00" >> $GITHUB_ENV
-        elif [ "$DAY" = "5" ]; then
+        elif [ "$DAY" = "6" ]; then
           # Friday night (11:00 PM UTC) is midnight Saturday in BST
           echo "IS_VALID_DAY=true" >> $GITHUB_ENV
           echo "BOOKING_DAY=Saturday" >> $GITHUB_ENV
