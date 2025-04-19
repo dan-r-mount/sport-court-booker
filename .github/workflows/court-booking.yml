@@ -71,7 +71,7 @@ jobs:
           echo "BOOKING_DAY=Thursday" >> $GITHUB_ENV
           echo "BOOKING_TIME1=19:00" >> $GITHUB_ENV
           echo "BOOKING_TIME2=20:00" >> $GITHUB_ENV
-        elif [ "$DAY" = "6" ]; then
+        elif [ "$DAY" = "5" ]; then
           # Friday night (11:00 PM UTC) is midnight Saturday in BST
           echo "IS_VALID_DAY=true" >> $GITHUB_ENV
           echo "BOOKING_DAY=Saturday" >> $GITHUB_ENV
@@ -138,17 +138,17 @@ jobs:
         server_port: 465
         username: ${{ secrets.EMAIL_USERNAME }}
         password: ${{ secrets.EMAIL_PASSWORD }}
-        subject: "TEST PLEASE IGNORE - Telford Park Tennis Court Booking Results - ${{ env.BOOKING_DAY }} ${{ env.BOOKING_TIME1 }}-${{ env.BOOKING_TIME2 }}"
+        subject: "Court Booking Results - ${{ env.BOOKING_DAY }} ${{ env.BOOKING_TIME1 }}-${{ env.BOOKING_TIME2 }}"
         body: |
           Hi team,
 
-          I've just attempted to book the courts for you. Here's what I managed to do:
+          I've just attempted to book the courts for you. See below for the details:
 
           Booking Details:
           ----------------
           ${{ env.BOOKING_RESULTS }}
 
-          Remember: If you need to cancel or change any bookings, you'll need to do that through the Telford Park Tennis Club website.
+          Remember: If you need to cancel or change any bookings, you'll need to do that through the club website.
 
           Best regards,
           Dan's Offshore Booking Team
