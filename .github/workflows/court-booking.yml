@@ -138,7 +138,7 @@ jobs:
         server_port: 465
         username: ${{ secrets.EMAIL_USERNAME }}
         password: ${{ secrets.EMAIL_PASSWORD }}
-        subject: "Telford Park Tennis Court Booking Results - ${{ env.BOOKING_DAY }} ${{ env.BOOKING_TIME1 }}-${{ env.BOOKING_TIME2 }}"
+        subject: "TEST PLEASE IGNORE - Telford Park Tennis Court Booking Results - ${{ env.BOOKING_DAY }} ${{ env.BOOKING_TIME1 }}-${{ env.BOOKING_TIME2 }}"
         body: |
           Hi team,
 
