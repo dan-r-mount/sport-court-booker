@@ -18,13 +18,46 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    # The day checker serves as a secondary safeguard to the cron schedule.
-    # While the cron schedule ensures the workflow runs on specific days,
-    # this check provides additional protection for:
-    # 1. Manual triggers through workflow_dispatch
-    # 2. Handling time zone differences (Friday night UTC = Saturday BST)
-    # 3. Preventing issues if someone modifies the cron schedule
-    # 4. Setting the appropriate time slots based on the day
+    # Move Python setup to the beginning so it runs for all trigger types
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        cache: 'pip'  # Enable pip caching
+    
+    # Verify that requirements.txt exists
+    - name: Verify requirements file
+      run: |
+        if [ -f "requirements.txt" ]; then
+          echo "Found requirements.txt file"
+        else
+          echo "requirements.txt file not found"
+          exit 1
+        fi
+
+    # Cache Playwright browsers to avoid reinstalling each time
+    - name: Cache Playwright browsers
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-chromium
+        restore-keys: |
+          playwright-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-
+          playwright-${{ runner.os }}-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        # Only install Chromium with minimal dependencies if it's not already cached
+        if [ ! -d ~/.cache/ms-playwright/chromium-* ]; then
+          playwright install chromium --with-deps
+        else
+          echo "Using cached Playwright browsers"
+        fi
+        
+    # The day checker now happens after Python setup, so we can test the dependency installation
+    # even if the day check fails
     - name: Check if correct day for booking
       id: check_day
       run: |
@@ -62,48 +95,6 @@ jobs:
         echo "Will run booking in $RANDOM_DELAY seconds"
         
         sleep $RANDOM_DELAY
-    
-    # Only proceed with setting up Python and dependencies if it's a valid booking day
-    - name: Set up Python
-      if: env.IS_VALID_DAY == 'true'
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-        cache: 'pip'  # Enable pip caching
-    
-    # Verify that requirements.txt exists
-    - name: Verify requirements file
-      if: env.IS_VALID_DAY == 'true'
-      run: |
-        if [ -f "requirements.txt" ]; then
-          echo "Found requirements.txt file"
-        else
-          echo "requirements.txt file not found"
-          exit 1
-        fi
-
-    # Cache Playwright browsers to avoid reinstalling each time
-    - name: Cache Playwright browsers
-      if: env.IS_VALID_DAY == 'true'
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/ms-playwright
-        key: playwright-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-chromium
-        restore-keys: |
-          playwright-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-
-          playwright-${{ runner.os }}-
-    
-    - name: Install dependencies
-      if: env.IS_VALID_DAY == 'true'
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        # Only install Chromium with minimal dependencies if it's not already cached
-        if [ ! -d ~/.cache/ms-playwright/chromium-* ]; then
-          playwright install chromium --with-deps
-        else
-          echo "Using cached Playwright browsers"
-        fi
         
     - name: Run booking script
       if: env.IS_VALID_DAY == 'true'
