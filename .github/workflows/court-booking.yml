@@ -34,22 +34,16 @@ jobs:
           exit 1
         fi
         
-    # Install system dependencies required for Playwright
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        # Use microsoft's recommended browser dependencies
-        sudo apt-get install -y --no-install-recommends wget ca-certificates
-
-    # Install dependencies without any caching
-    - name: Install Python dependencies
+    # Install Python dependencies and Playwright using the recommended method
+    - name: Install dependencies and Playwright
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         
-    # Install Playwright using microsoft/playwright-github-action
-    - name: Install Playwright browsers
-      uses: microsoft/playwright-github-action@v1
+        # Install Playwright browsers using the recommended method
+        # This way playwright will attempt to install both the browsers and 
+        # the required system dependencies on its own
+        playwright install --with-deps chromium
         
     # The day checker now happens after Python setup, so we can test the dependency installation
     # even if the day check fails
