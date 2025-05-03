@@ -357,6 +357,7 @@ def main():
     Main function that coordinates multiple booking attempts.
     Schedule:
     - Thursday: 19:00 and 20:00
+    - Friday: 11:00 and 12:00 (same slots as Saturday)
     - Saturday: 11:00 and 12:00
     """
     load_dotenv()
@@ -371,6 +372,10 @@ def main():
             'day_name': 'Thursday',
             'slots': ('19:00', '20:00')
         },
+        5: {  # Friday
+            'day_name': 'Friday',
+            'slots': ('11:00', '12:00')
+        },
         6: {  # Saturday
             'day_name': 'Saturday',
             'slots': ('11:00', '12:00')
@@ -379,7 +384,7 @@ def main():
     
     # Check if today is a booking day
     if current_day not in time_slots:
-        logging.info("Not Thursday or Saturday - no bookings needed")
+        logging.info("Not Thursday, Friday or Saturday - no bookings needed")
         return
     
     # Get the time slots for today

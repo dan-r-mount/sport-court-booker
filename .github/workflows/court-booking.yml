@@ -4,10 +4,10 @@ on:
   schedule:
     # Regular schedule: Run at 11:00 PM UTC (12:00 AM BST) on Friday and 4:34 UTC on Thursday
     # This means it will run:
-    # - Every Friday at 11:00 PM UTC (12:00 AM BST Saturday)
+    # - Every Friday at 11:00 PM UTC (12:00 AM BST Friday/Saturday)
     # - Every Thursday at 4:34 AM UTC (5:34 AM BST)
     # Schedule is set using UTC time
-    - cron: '0 23 * * 5'  # Friday at 11:00 PM UTC (12:00 AM BST Saturday)
+    - cron: '0 23 * * 5'  # Friday at 11:00 PM UTC (12:00 AM BST Friday/Saturday)
     - cron: '34 4 * * 4'  # Thursday at 4:34 AM UTC (5:34 AM BST)
   workflow_dispatch:  # Allows manual triggering
 
@@ -64,22 +64,22 @@ jobs:
         DAY=$(date +%u)
         
         # For Friday night cron job that runs at 11:00 PM UTC (12:00 AM BST Saturday)
-        # We need to check if it's day 5 (Friday) but treat it as Saturday booking
+        # We need to check if it's day 5 (Friday) or day 6 (Saturday)
         if [ "$DAY" = "4" ]; then
           # Thursday case
           echo "IS_VALID_DAY=true" >> $GITHUB_ENV
           echo "BOOKING_DAY=Thursday" >> $GITHUB_ENV
           echo "BOOKING_TIME1=19:00" >> $GITHUB_ENV
           echo "BOOKING_TIME2=20:00" >> $GITHUB_ENV
-        elif [ "$DAY" = "5" ]; then
-          # Friday night (11:00 PM UTC) is midnight Saturday in BST
+        elif [ "$DAY" = "5" ] || [ "$DAY" = "6" ]; then
+          # Friday or Saturday case (both use the same schedule)
           echo "IS_VALID_DAY=true" >> $GITHUB_ENV
-          echo "BOOKING_DAY=Saturday" >> $GITHUB_ENV
+          echo "BOOKING_DAY=$([ "$DAY" = "5" ] && echo "Friday" || echo "Saturday")" >> $GITHUB_ENV
           echo "BOOKING_TIME1=11:00" >> $GITHUB_ENV
           echo "BOOKING_TIME2=12:00" >> $GITHUB_ENV
         else
           echo "IS_VALID_DAY=false" >> $GITHUB_ENV
-          echo "Skipping court booking - not Thursday or Saturday"
+          echo "Skipping court booking - not Thursday, Friday or Saturday"
         fi
     
     - name: Add random delay
