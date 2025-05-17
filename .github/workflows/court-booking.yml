@@ -60,26 +60,59 @@ jobs:
     - name: Check if correct day for booking
       id: check_day
       run: |
-        # Get current day of week (1-7, where 1 is Monday)
-        DAY=$(date +%u)
-        
-        # For Friday night cron job that runs at 11:00 PM UTC (12:00 AM BST Saturday)
-        # We need to check if it's day 5 (Friday) or day 6 (Saturday)
-        if [ "$DAY" = "4" ]; then
-          # Thursday case
+        UTC_DAY_NUM=$(date +%u) # 1-7 (Mon-Sun)
+        UTC_HOUR=$(date +%H)    # 00-23
+        EVENT_NAME="${{ github.event_name }}"
+
+        echo "Event: $EVENT_NAME, UTC Day Num: $UTC_DAY_NUM, UTC Hour: $UTC_HOUR"
+        IS_VALID_FOR_RUN="false"
+
+        # --- Scheduled Runs ---
+        if [ "$EVENT_NAME" = "schedule" ]; then
+          # Thursday 04:34 UTC schedule
+          if [ "$UTC_DAY_NUM" = "4" ] && [ "$UTC_HOUR" = "04" ]; then
+            TARGET_DAY_NAME="Thursday"
+            TARGET_TIME1="19:00" # Courts booked for 19:00 BST
+            TARGET_TIME2="20:00" # Courts booked for 20:00 BST
+            IS_VALID_FOR_RUN="true"
+          # Friday 23:00 UTC schedule (this is Saturday 00:00 BST when the script *runs*)
+          # Courts should be booked for Saturday 11:00 BST and 12:00 BST
+          elif [ "$UTC_DAY_NUM" = "5" ] && [ "$UTC_HOUR" = "23" ]; then
+            TARGET_DAY_NAME="Saturday" # The booking is for a Saturday
+            TARGET_TIME1="11:00"     # Courts booked for 11:00 BST
+            TARGET_TIME2="12:00"     # Courts booked for 12:00 BST
+            IS_VALID_FOR_RUN="true"
+          fi
+        # --- Manual Workflow Dispatch ---
+        # For manual runs, these will be the BST times for the UTC day of dispatch
+        elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+          if [ "$UTC_DAY_NUM" = "4" ]; then # Thursday UTC
+            TARGET_DAY_NAME="Thursday"
+            TARGET_TIME1="19:00" # Courts booked for 19:00 BST
+            TARGET_TIME2="20:00" # Courts booked for 20:00 BST
+            IS_VALID_FOR_RUN="true"
+          elif [ "$UTC_DAY_NUM" = "5" ]; then # Friday UTC (if manually run NOT at 23:00)
+            TARGET_DAY_NAME="Friday"
+            TARGET_TIME1="11:00" # Courts booked for 11:00 BST
+            TARGET_TIME2="12:00" # Courts booked for 12:00 BST
+            IS_VALID_FOR_RUN="true"
+          elif [ "$UTC_DAY_NUM" = "6" ]; then # Saturday UTC
+            TARGET_DAY_NAME="Saturday"
+            TARGET_TIME1="11:00" # Courts booked for 11:00 BST
+            TARGET_TIME2="12:00" # Courts booked for 12:00 BST
+            IS_VALID_FOR_RUN="true"
+          fi
+        fi
+
+        if [ "$IS_VALID_FOR_RUN" = "true" ]; then
           echo "IS_VALID_DAY=true" >> $GITHUB_ENV
-          echo "BOOKING_DAY=Thursday" >> $GITHUB_ENV
-          echo "BOOKING_TIME1=19:00" >> $GITHUB_ENV
-          echo "BOOKING_TIME2=20:00" >> $GITHUB_ENV
-        elif [ "$DAY" = "5" ] || [ "$DAY" = "6" ]; then
-          # Friday or Saturday case (both use the same schedule)
-          echo "IS_VALID_DAY=true" >> $GITHUB_ENV
-          echo "BOOKING_DAY=$([ "$DAY" = "5" ] && echo "Friday" || echo "Saturday")" >> $GITHUB_ENV
-          echo "BOOKING_TIME1=11:00" >> $GITHUB_ENV
-          echo "BOOKING_TIME2=12:00" >> $GITHUB_ENV
+          echo "BOOKING_DAY=$TARGET_DAY_NAME" >> $GITHUB_ENV
+          echo "BOOKING_TIME1=$TARGET_TIME1" >> $GITHUB_ENV
+          echo "BOOKING_TIME2=$TARGET_TIME2" >> $GITHUB_ENV
+          echo "Setting BOOKING_DAY=$TARGET_DAY_NAME, TIME1=$TARGET_TIME1, TIME2=$TARGET_TIME2"
         else
           echo "IS_VALID_DAY=false" >> $GITHUB_ENV
-          echo "Skipping court booking - not Thursday, Friday or Saturday"
+          echo "Skipping court booking - not a configured schedule or dispatch day."
         fi
     
     - name: Add random delay

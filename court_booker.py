@@ -13,17 +13,29 @@ logging.basicConfig(
 
 def calculate_booking_date():
     """
-    Calculates a booking date exactly two weeks from today.
+    Calculates a booking date exactly two weeks from the effective booking day.
+    For bookings made late Friday UTC (early Saturday BST), it considers Saturday as the base.
     Uses midnight as the reference time for consistent date calculations.
     """
-    current_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    booking_date = current_date + timedelta(weeks=2)
+    current_time = datetime.now() # This will be UTC on GitHub runner
+    base_date_for_calc = current_time
+
+    # Check if it's Friday (weekday 4) and 23:00 hour or later in UTC.
+    # This corresponds to the 12:00 AM Saturday BST booking slot.
+    if current_time.weekday() == 4 and current_time.hour >= 23:
+        logging.info(f"Original UTC timestamp {current_time.strftime('%Y-%m-%d %H:%M:%S')} is Friday 23:00+ UTC. Adjusting base date to be Saturday for BST.")
+        # Advance the date for calculation to represent Saturday
+        base_date_for_calc = current_time + timedelta(days=1)
+
+    # Normalize to midnight for the two-week calculation
+    base_date = base_date_for_calc.replace(hour=0, minute=0, second=0, microsecond=0)
+    booking_date = base_date + timedelta(weeks=2)
     
     logging.info(f"""
     Date calculation details:
-    Current date: {current_date.strftime('%Y-%m-%d')}
-    Booking date (2 weeks ahead): {booking_date.strftime('%Y-%m-%d')}
-    Days difference: {(booking_date - current_date).days} days
+    Actual current time (UTC on runner): {current_time.strftime('%Y-%m-%d %H:%M:%S')}
+    Base date used for calculation (normalized to midnight): {base_date.strftime('%Y-%m-%d')}
+    Target booking date (2 weeks from base): {booking_date.strftime('%Y-%m-%d')}
     """)
     
     return booking_date
@@ -361,46 +373,60 @@ def main():
     - Saturday: 11:00 and 12:00
     """
     load_dotenv()
-    
-    # Get current date information
-    current_date = datetime.now()
-    current_day = current_date.weekday() + 1  # 1-based weekday (1=Monday, 7=Sunday)
-    
-    # Define time slots for each day
-    time_slots = {
-        4: {  # Thursday
-            'day_name': 'Thursday',
-            'slots': ('19:00', '20:00')
-        },
-        5: {  # Friday
-            'day_name': 'Friday',
-            'slots': ('11:00', '12:00')
-        },
-        6: {  # Saturday
-            'day_name': 'Saturday',
-            'slots': ('11:00', '12:00')
-        }
-    }
-    
-    # Check if today is a booking day
-    if current_day not in time_slots:
-        logging.info("Not Thursday, Friday or Saturday - no bookings needed")
-        return
-    
-    # Get the time slots for today
-    day_info = time_slots[current_day]
-    time_slot1, time_slot2 = day_info['slots']
-    day_name = day_info['day_name']
-    
-    logging.info(f"Running bookings for {day_name}")
-    logging.info(f"Time slots: {time_slot1} and {time_slot2}")
+
+    # Get effective booking day and times from environment variables set by the workflow
+    env_booking_day = os.getenv('BOOKING_DAY')
+    env_time_slot1 = os.getenv('BOOKING_TIME1')
+    env_time_slot2 = os.getenv('BOOKING_TIME2')
+
+    use_env_vars = env_booking_day and env_time_slot1 and env_time_slot2
+
+    if use_env_vars:
+        day_name_for_logging = env_booking_day
+        actual_time_slot1 = env_time_slot1
+        actual_time_slot2 = env_time_slot2
+        logging.info(f"Using booking day and time slots from GitHub workflow environment variables:")
+        logging.info(f"Day: {day_name_for_logging}, Slot 1: {actual_time_slot1}, Slot 2: {actual_time_slot2}")
+    else:
+        logging.warning("One or more booking environment variables (BOOKING_DAY, BOOKING_TIME1, BOOKING_TIME2) not found.")
+        logging.info("Falling back to internal UTC-based day/time determination for local runs or misconfiguration.")
+        
+        current_date_utc = datetime.now() # UTC on runner
+        py_weekday = current_date_utc.weekday() # Monday:0, ..., Friday:4, Saturday:5
+
+        if py_weekday == 3: # Thursday
+            day_name_for_logging = "Thursday (fallback)"
+            actual_time_slot1 = "19:00"
+            actual_time_slot2 = "20:00"
+        elif py_weekday == 4: # Friday
+            if current_date_utc.hour >= 23: # Corresponds to Sat AM BST
+                 day_name_for_logging = "Saturday (fallback due to Fri 23:00+ UTC)"
+                 actual_time_slot1 = "00:00" 
+                 actual_time_slot2 = "01:00"
+            else: # General Friday
+                 day_name_for_logging = "Friday (fallback)"
+                 actual_time_slot1 = "11:00"
+                 actual_time_slot2 = "12:00"
+        elif py_weekday == 5: # Saturday
+            day_name_for_logging = "Saturday (fallback)"
+            actual_time_slot1 = "11:00"
+            actual_time_slot2 = "12:00"
+        else:
+            logging.info(f"Fallback: Not a recognized booking day (UTC: {current_date_utc.strftime('%A')}). No bookings will be attempted.")
+            with open('booking_results.txt', 'w') as f:
+                f.write("Sport Court Booking Results:\n\nNo booking attempted: Not a recognized booking day based on fallback logic.\n")
+            return
+        logging.info(f"Fallback Day: {day_name_for_logging}, Slot 1: {actual_time_slot1}, Slot 2: {actual_time_slot2}")
+
+    logging.info(f"--- Running bookings for {day_name_for_logging} ---")
+    logging.info(f"Attempting time slots: {actual_time_slot1} and {actual_time_slot2}")
     
     # Store all booking results
-    booking_results = []
+    booking_results_list = [] # Renamed to avoid conflict with any module named 'booking_results'
     
     # First booking attempt
-    first_booking = attempt_booking('LTA_USERNAME', 'LTA_PASSWORD', time_slot1)
-    booking_results.append(first_booking)
+    first_booking = attempt_booking('LTA_USERNAME', 'LTA_PASSWORD', actual_time_slot1)
+    booking_results_list.append(first_booking)
     logging.info(f"First booking attempt result: {first_booking['status']}")
     
     # Get the court that was booked in the first attempt (if successful)
@@ -412,17 +438,17 @@ def main():
     time.sleep(2)
     
     # Second booking attempt with preferred court information
-    second_booking = attempt_booking('LTA_USERNAME2', 'LTA_PASSWORD2', time_slot2, preferred_court)
-    booking_results.append(second_booking)
+    second_booking = attempt_booking('LTA_USERNAME2', 'LTA_PASSWORD2', actual_time_slot2, preferred_court)
+    booking_results_list.append(second_booking)
     logging.info(f"Second booking attempt result: {second_booking['status']}")
     
     # Write results to a file for the GitHub Action to read
     with open('booking_results.txt', 'w') as f:
         f.write("Sport Court Booking Results:\n\n")
-        for result in booking_results:
+        for result in booking_results_list:
             f.write(f"LTA Username: {result['actual_username']}\n")
-            f.write(f"Date: {result['date']}\n")
-            f.write(f"Time: {result['time']}\n")
+            f.write(f"Date: {result['date']}\n") # This date is from calculate_booking_date, which is already correct
+            f.write(f"Time: {result['time']}\n") # This time is actual_time_slot1/2 passed to attempt_booking
             f.write(f"Status: {result['status']}\n")
             if result['booked_court']:
                 f.write(f"Booked Court: {result['booked_court']}\n")
