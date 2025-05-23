@@ -14,7 +14,7 @@ logging.basicConfig(
 def is_blackout_period(target_date):
     """
     Checks if a given date falls within the blackout period where no bookings should be made.
-    Blackout period: May 4th through June 30th (end of June).
+    Blackout period: June 4th through June 30th (end of June).
     
     Args:
         target_date (datetime): The date to check
@@ -24,14 +24,14 @@ def is_blackout_period(target_date):
     """
     # Define blackout period for the current year
     year = target_date.year
-    blackout_start = datetime(year, 5, 4)  # May 4th
+    blackout_start = datetime(year, 6, 4)  # June 4th
     blackout_end = datetime(year, 6, 30)   # June 30th
     
     # Check if target_date falls within the blackout period
     is_blackout = blackout_start <= target_date <= blackout_end
     
     if is_blackout:
-        logging.info(f"Date {target_date.strftime('%Y-%m-%d')} falls within blackout period (May 4 - June 30). No booking will be attempted.")
+        logging.info(f"Date {target_date.strftime('%Y-%m-%d')} falls within blackout period (June 4 - June 30). No booking will be attempted.")
     
     return is_blackout
 
@@ -280,9 +280,9 @@ def attempt_booking(username_env_var, password_env_var, time_slot, preferred_cou
     # Check if booking date is None (blackout period)
     if booking_date is None:
         logging.info(f"Skipping booking for {username_env_var} due to blackout period")
-        booking_details['status'] = 'Skipped - Blackout Period'
-        booking_details['error'] = 'Target booking date falls within blackout period (May 4 - June 30)'
-        booking_details['date'] = 'N/A (Blackout Period)'
+        booking_details['status'] = 'Suspended - Club Championships'
+        booking_details['error'] = 'Service temporarily suspended due to club championships'
+        booking_details['date'] = 'N/A (Service Suspended)'
         return booking_details
 
     with sync_playwright() as playwright:
@@ -470,13 +470,14 @@ def main():
         # Write blackout results to file
         with open('booking_results.txt', 'w') as f:
             f.write("Sport Court Booking Results:\n\n")
-            f.write("BLACKOUT PERIOD ACTIVE\n")
-            f.write("======================\n")
-            f.write("No court bookings attempted due to blackout period (May 4 - June 30).\n")
-            f.write("Bookings will resume automatically on July 1st.\n\n")
+            f.write("SERVICE TEMPORARILY SUSPENDED\n")
+            f.write("============================\n")
+            f.write("Court booking temporarily suspended due to club championships.\n")
+            f.write("We won't charge you for this service during this period.\n\n")
+            f.write("Service will resume automatically on July 1st.\n\n")
             f.write(f"Scheduled booking day: {day_name_for_logging}\n")
             f.write(f"Scheduled time slots: {actual_time_slot1} and {actual_time_slot2}\n")
-            f.write("Status: Skipped due to blackout period\n")
+            f.write("Status: Temporarily suspended\n")
         return
     else:
         logging.info(f"Target booking date {test_booking_date.strftime('%Y-%m-%d')} is outside blackout period - proceeding with bookings")
