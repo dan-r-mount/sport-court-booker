@@ -11,29 +11,6 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-def is_blackout_period(target_date):
-    """
-    Checks if a given date falls within the blackout period where no bookings should be made.
-    Blackout period: June 4th through June 30th (end of June).
-    
-    Args:
-        target_date (datetime): The date to check
-        
-    Returns:
-        bool: True if the date is in the blackout period, False otherwise
-    """
-    # Define blackout period for the current year
-    year = target_date.year
-    blackout_start = datetime(year, 6, 4)  # June 4th
-    blackout_end = datetime(year, 6, 30)   # June 30th
-    
-    # Check if target_date falls within the blackout period
-    is_blackout = blackout_start <= target_date <= blackout_end
-    
-    if is_blackout:
-        logging.info(f"Date {target_date.strftime('%Y-%m-%d')} falls within blackout period (June 4 - June 30). No booking will be attempted.")
-    
-    return is_blackout
 
 def calculate_booking_date():
     """
@@ -42,7 +19,7 @@ def calculate_booking_date():
     Uses midnight as the reference time for consistent date calculations.
     
     Returns:
-        datetime or None: The booking date if valid, None if it falls within blackout period
+        datetime or None: The booking date if valid
     """
     current_time = datetime.now() # This will be UTC on GitHub runner
     base_date_for_calc = current_time
@@ -64,10 +41,6 @@ def calculate_booking_date():
     Base date used for calculation (normalized to midnight): {base_date.strftime('%Y-%m-%d')}
     Target booking date (2 weeks from base): {booking_date.strftime('%Y-%m-%d')}
     """)
-    
-    # Check if the calculated booking date falls within the blackout period
-    if is_blackout_period(booking_date):
-        return None  # Return None to indicate no booking should be attempted
     
     return booking_date
 
@@ -277,13 +250,6 @@ def attempt_booking(username_env_var, password_env_var, time_slot, preferred_cou
     # Calculate target booking date
     booking_date = calculate_booking_date()
     
-    # Check if booking date is None (blackout period)
-    if booking_date is None:
-        logging.info(f"Skipping booking for {username_env_var} due to blackout period")
-        booking_details['status'] = 'Suspended - Club Championships'
-        booking_details['error'] = 'Service temporarily suspended due to club championships'
-        booking_details['date'] = 'N/A (Service Suspended)'
-        return booking_details
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True, slow_mo=1000)
@@ -460,27 +426,7 @@ def main():
 
     logging.info(f"--- Running bookings for {day_name_for_logging} ---")
     logging.info(f"Attempting time slots: {actual_time_slot1} and {actual_time_slot2}")
-    
-    # Check if we're in a blackout period before attempting any bookings
-    logging.info("Checking if target booking date falls within blackout period...")
-    test_booking_date = calculate_booking_date()
-    if test_booking_date is None:
-        logging.info("Blackout period detected - no bookings will be attempted today")
-        
-        # Write blackout results to file
-        with open('booking_results.txt', 'w') as f:
-            f.write("Sport Court Booking Results:\n\n")
-            f.write("SERVICE TEMPORARILY SUSPENDED\n")
-            f.write("============================\n")
-            f.write("Court booking temporarily suspended due to club championships.\n")
-            f.write("We won't charge you for this service during this period.\n\n")
-            f.write("Service will resume automatically on July 1st.\n\n")
-            f.write(f"Scheduled booking day: {day_name_for_logging}\n")
-            f.write(f"Scheduled time slots: {actual_time_slot1} and {actual_time_slot2}\n")
-            f.write("Status: Temporarily suspended\n")
-        return
-    else:
-        logging.info(f"Target booking date {test_booking_date.strftime('%Y-%m-%d')} is outside blackout period - proceeding with bookings")
+
     
     # Store all booking results
     booking_results_list = [] # Renamed to avoid conflict with any module named 'booking_results'
