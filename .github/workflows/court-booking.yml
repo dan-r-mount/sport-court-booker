@@ -69,8 +69,8 @@ jobs:
 
         # --- Scheduled Runs ---
         if [ "$EVENT_NAME" = "schedule" ]; then
-          # Thursday 04:34 UTC schedule
-          if [ "$UTC_DAY_NUM" = "4" ] && [ "$UTC_HOUR" = "04" ]; then
+          # Thursday 04:34 UTC schedule (allow window from 04:00-05:59 UTC for late starts)
+          if [ "$UTC_DAY_NUM" = "4" ] && [ "$UTC_HOUR" -ge "4" ] && [ "$UTC_HOUR" -le "5" ]; then
             TARGET_DAY_NAME="Thursday"
             TARGET_TIME1="19:00" # Courts booked for 19:00 BST
             TARGET_TIME2="20:00" # Courts booked for 20:00 BST
