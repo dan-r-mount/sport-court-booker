@@ -2,13 +2,9 @@ name: Sport Court Booking
 
 on:
   schedule:
-    # Regular schedule: Run at 11:00 PM UTC (12:00 AM BST) on Friday and 4:34 UTC on Thursday
-    # This means it will run:
-    # - Every Friday at 11:00 PM UTC (12:00 AM BST Friday/Saturday)
-    # - Every Thursday at 4:34 AM UTC (5:34 AM BST)
-    # Schedule is set using UTC time
-    - cron: '0 23 * * 5'  # Friday at 11:00 PM UTC (12:00 AM BST Friday/Saturday)
-    - cron: '34 4 * * 4'  # Thursday at 4:34 AM UTC (5:34 AM BST)
+    # Regular schedule: Run at 11:00 PM UTC (12:00 AM BST) on Friday so bookings
+    # are always made for Saturday only. Schedule is set using UTC time.
+    - cron: '0 23 * * 5'  # Friday at 11:00 PM UTC (12:00 AM BST Saturday)
   workflow_dispatch:  # Allows manual triggering
 
 jobs:
@@ -69,34 +65,18 @@ jobs:
 
         # --- Scheduled Runs ---
         if [ "$EVENT_NAME" = "schedule" ]; then
-          # Thursday 04:34 UTC schedule (allow window from 04:00-05:59 UTC for late starts)
-          if [ "$UTC_DAY_NUM" = "4" ] && [ "$UTC_HOUR" -ge "4" ] && [ "$UTC_HOUR" -le "5" ]; then
-            TARGET_DAY_NAME="Thursday"
-            TARGET_TIME1="19:00" # Courts booked for 19:00 BST
-            TARGET_TIME2="20:00" # Courts booked for 20:00 BST
-            IS_VALID_FOR_RUN="true"
           # Friday 23:00 UTC schedule (this is Saturday 00:00 BST when the script *runs*)
           # Courts should be booked for Saturday 11:00 BST and 12:00 BST
-          elif [ "$UTC_DAY_NUM" = "5" ] && [ "$UTC_HOUR" = "23" ]; then
+          if [ "$UTC_DAY_NUM" = "5" ] && [ "$UTC_HOUR" = "23" ]; then
             TARGET_DAY_NAME="Saturday" # The booking is for a Saturday
             TARGET_TIME1="11:00"     # Courts booked for 11:00 BST
             TARGET_TIME2="12:00"     # Courts booked for 12:00 BST
             IS_VALID_FOR_RUN="true"
           fi
         # --- Manual Workflow Dispatch ---
-        # For manual runs, these will be the BST times for the UTC day of dispatch
+        # For manual runs, only allow Saturday bookings
         elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-          if [ "$UTC_DAY_NUM" = "4" ]; then # Thursday UTC
-            TARGET_DAY_NAME="Thursday"
-            TARGET_TIME1="19:00" # Courts booked for 19:00 BST
-            TARGET_TIME2="20:00" # Courts booked for 20:00 BST
-            IS_VALID_FOR_RUN="true"
-          elif [ "$UTC_DAY_NUM" = "5" ]; then # Friday UTC (if manually run NOT at 23:00)
-            TARGET_DAY_NAME="Friday"
-            TARGET_TIME1="11:00" # Courts booked for 11:00 BST
-            TARGET_TIME2="12:00" # Courts booked for 12:00 BST
-            IS_VALID_FOR_RUN="true"
-          elif [ "$UTC_DAY_NUM" = "6" ]; then # Saturday UTC
+          if [ "$UTC_DAY_NUM" = "6" ]; then # Saturday UTC
             TARGET_DAY_NAME="Saturday"
             TARGET_TIME1="11:00" # Courts booked for 11:00 BST
             TARGET_TIME2="12:00" # Courts booked for 12:00 BST

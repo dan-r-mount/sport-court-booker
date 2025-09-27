@@ -1,15 +1,10 @@
 # Sport Court Booking Automation
 
-This repository contains an automated system for booking tennis courts at Telford Park Tennis Club. The system uses GitHub Actions to automatically book courts every Thursday and Saturday for two weeks in advance.
+This repository contains an automated system for booking tennis courts at Telford Park Tennis Club. The system uses GitHub Actions to automatically book courts every Saturday for two weeks in advance.
 
 ## Schedule
 
 The system runs automatically at the following times:
-
-### Thursday Bookings
-- Runs at 4:34 AM UTC (5:34 AM BST/GMT) on Thursdays
-- User 1: Books a court for 7 PM (two weeks ahead)
-- User 2: Books a court for 8 PM (two weeks ahead)
 
 ### Saturday Bookings
 - Runs at 11:00 PM UTC Friday (12:00 AM BST/GMT Saturday) 
@@ -23,14 +18,13 @@ The system uses two mechanisms to ensure bookings happen correctly:
 
 1. **GitHub Actions Cron Schedule**:
    - Determines when the workflow runs
-   - Thursday schedule: `cron: '34 4 * * 4'` (4:34 AM UTC / 5:34 AM BST Thursday)
    - Saturday schedule: `cron: '0 23 * * 5'` (11:00 PM UTC Friday / 12:00 AM BST Saturday)
 
 2. **Day Validation Check**:
    - Acts as a secondary safeguard to verify the correct day
    - Sets the appropriate booking times based on the day
    - Handles time zone differences (Friday night UTC = Saturday morning BST)
-   - Enables safe manual triggering through the GitHub Actions interface
+   - Enables safe manual triggering through the GitHub Actions interface on Saturday only
    - Prevents incorrect bookings if someone modifies the schedule
 
 This dual-layer approach ensures maximum reliability and flexibility, allowing both automated and manual booking attempts.
@@ -80,12 +74,12 @@ This dual-layer approach ensures maximum reliability and flexibility, allowing b
 2. You should see the "Sport Court Booking" workflow
 3. Click "Enable workflow"
 
-The GitHub Actions workflow will now automatically run at the scheduled times with a random delay between 10 and 30 seconds for the actual booking attempt.
+The GitHub Actions workflow will now automatically run at the scheduled time with a random delay between 10 and 30 seconds for the actual booking attempt.
 
 ## Email Notifications
 
 After each run (successful or failed), the system will send an email containing:
-- The day of booking (Thursday/Saturday)
+- The day of booking (Saturday)
 - The date that the court has been booked for
 - The court number that has been booked
 - The actual LTA username that booked the court
@@ -98,7 +92,7 @@ You can also trigger the booking process manually:
 2. Select the "Sport Court Booking" workflow
 3. Click "Run workflow"
 
-When manually triggered, the day checker will verify the current day and set the appropriate booking times based on whether it's Thursday or Saturday. If it's neither Thursday nor Saturday, the workflow will exit without attempting to book.
+When manually triggered, the day checker will verify the current day and only proceed if it is Saturday. If it's any other day, the workflow will exit without attempting to book.
 
 ## Logs
 
@@ -112,13 +106,13 @@ The workflow logs will show:
 
 The system uses a smart court selection strategy:
 
-### First Booking (7 PM Thursday/11 AM Saturday)
+### First Booking (11 AM Saturday)
 The system tries to book courts in this order:
 1. Court 5 (preferred)
 2. Court 4
 3. Court 3
 
-### Second Booking (8 PM Thursday/12 PM Saturday)
+### Second Booking (12 PM Saturday)
 For the second booking, the system prioritizes continuity:
 1. First tries to book the same court that was successfully booked for the first slot
 2. If that's not available, follows the standard preference order:

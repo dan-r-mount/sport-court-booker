@@ -24,11 +24,10 @@ def calculate_booking_date():
     current_time = datetime.now() # This will be UTC on GitHub runner
     base_date_for_calc = current_time
 
-    # Check if it's Friday (weekday 4) and 23:00 hour or later in UTC.
-    # This corresponds to the 12:00 AM Saturday BST booking slot.
+    # Since all bookings are for Saturdays, treat late Friday UTC (23:00+)
+    # as Saturday for calculation consistency.
     if current_time.weekday() == 4 and current_time.hour >= 23:
         logging.info(f"Original UTC timestamp {current_time.strftime('%Y-%m-%d %H:%M:%S')} is Friday 23:00+ UTC. Adjusting base date to be Saturday for BST.")
-        # Advance the date for calculation to represent Saturday
         base_date_for_calc = current_time + timedelta(days=1)
 
     # Normalize to midnight for the two-week calculation
@@ -374,8 +373,6 @@ def main():
     """
     Main function that coordinates multiple booking attempts.
     Schedule:
-    - Thursday: 19:00 and 20:00
-    - Friday: 11:00 and 12:00 (same slots as Saturday)
     - Saturday: 11:00 and 12:00
     """
     load_dotenv()
@@ -400,20 +397,11 @@ def main():
         current_date_utc = datetime.now() # UTC on runner
         py_weekday = current_date_utc.weekday() # Monday:0, ..., Friday:4, Saturday:5
 
-        if py_weekday == 3: # Thursday
-            day_name_for_logging = "Thursday (fallback)"
-            actual_time_slot1 = "19:00"
-            actual_time_slot2 = "20:00"
-        elif py_weekday == 4: # Friday
-            if current_date_utc.hour >= 23: # Corresponds to Sat AM BST
-                 day_name_for_logging = "Saturday (fallback due to Fri 23:00+ UTC)"
-                 actual_time_slot1 = "00:00" 
-                 actual_time_slot2 = "01:00"
-            else: # General Friday
-                 day_name_for_logging = "Friday (fallback)"
-                 actual_time_slot1 = "11:00"
-                 actual_time_slot2 = "12:00"
-        elif py_weekday == 5: # Saturday
+        if py_weekday == 4 and current_date_utc.hour >= 23:
+            day_name_for_logging = "Saturday (fallback due to Fri 23:00+ UTC)"
+            actual_time_slot1 = "11:00"
+            actual_time_slot2 = "12:00"
+        elif py_weekday == 5:
             day_name_for_logging = "Saturday (fallback)"
             actual_time_slot1 = "11:00"
             actual_time_slot2 = "12:00"
