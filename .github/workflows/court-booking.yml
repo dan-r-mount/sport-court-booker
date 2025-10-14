@@ -151,7 +151,7 @@ jobs:
         server_port: 465
         username: ${{ secrets.EMAIL_USERNAME }}
         password: ${{ secrets.EMAIL_PASSWORD }}
-        subject: "Court Booking Results - ${{ env.BOOKING_DAY }} ${{ env.BOOKING_TIME1 }}-${{ env.BOOKING_TIME2 }}"
+        subject: "Court Booking Results - ${{ env.BOOKING_DAY }}"
         body: |
           Hi team,
 

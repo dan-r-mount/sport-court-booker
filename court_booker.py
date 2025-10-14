@@ -413,33 +413,37 @@ def main():
         logging.info(f"Fallback Day: {day_name_for_logging}, Slot 1: {actual_time_slot1}, Slot 2: {actual_time_slot2}")
 
     logging.info(f"--- Running bookings for {day_name_for_logging} ---")
-    logging.info(f"Attempting time slots: {actual_time_slot1} and {actual_time_slot2}")
+    logging.info(f"Attempting first time slot: {actual_time_slot1} (will only try second if first fails)")
 
     
     # Store all booking results
     booking_results_list = [] # Renamed to avoid conflict with any module named 'booking_results'
     
-    # First booking attempt
+    # Attempt first slot
     first_booking = attempt_booking('LTA_USERNAME', 'LTA_PASSWORD', actual_time_slot1)
     booking_results_list.append(first_booking)
     logging.info(f"First booking attempt result: {first_booking['status']}")
     
-    # Get the court that was booked in the first attempt (if successful)
-    preferred_court = first_booking.get('booked_court') if first_booking['status'] == 'Success' else None
-    if preferred_court:
-        logging.info(f"First user booked {preferred_court}, second user will try this court first")
-    
-    # Add a small delay between attempts
-    time.sleep(2)
-    
-    # Second booking attempt with preferred court information
-    second_booking = attempt_booking('LTA_USERNAME2', 'LTA_PASSWORD2', actual_time_slot2, preferred_court)
-    booking_results_list.append(second_booking)
-    logging.info(f"Second booking attempt result: {second_booking['status']}")
+    booked_slot = None
+    if first_booking['status'] == 'Success':
+        booked_slot = actual_time_slot1
+        logging.info("First slot booked successfully. Skipping second slot to ensure only one booking is made.")
+    else:
+        # Only attempt the second slot if the first one failed
+        time.sleep(2)
+        second_booking = attempt_booking('LTA_USERNAME2', 'LTA_PASSWORD2', actual_time_slot2)
+        booking_results_list.append(second_booking)
+        logging.info(f"Second booking attempt result: {second_booking['status']}")
+        if second_booking['status'] == 'Success':
+            booked_slot = actual_time_slot2
     
     # Write results to a file for the GitHub Action to read
     with open('booking_results.txt', 'w') as f:
-        f.write("Sport Court Booking Results:\n\n")
+        f.write("Sport Court Booking Results\n")
+        if booked_slot:
+            f.write(f"Summary: Booked {booked_slot}\n\n")
+        else:
+            f.write("Summary: No booking made\n\n")
         for result in booking_results_list:
             f.write(f"LTA Username: {result['actual_username']}\n")
             f.write(f"Date: {result['date']}\n") # This date is from calculate_booking_date, which is already correct

@@ -7,9 +7,8 @@ This repository contains an automated system for booking tennis courts at Telfor
 The system runs automatically at the following times:
 
 ### Saturday Bookings
-- Runs at 11:00 PM UTC Friday (12:00 AM BST/GMT Saturday) 
-- User 1: Books a court for 11 AM (two weeks ahead)
-- User 2: Books a court for 12 PM (two weeks ahead)
+- Runs at 11:00 PM UTC Friday (12:00 AM BST/GMT Saturday)
+- Attempts 11:00 first; if unavailable, attempts 12:00. At most one booking is made.
 
 ## System Design
 
@@ -80,8 +79,9 @@ The GitHub Actions workflow will now automatically run at the scheduled time wit
 
 After each run (successful or failed), the system will send an email containing:
 - The day of booking (Saturday)
+- A summary line indicating which hour was booked (11:00 or 12:00), or that no booking was made
 - The date that the court has been booked for
-- The court number that has been booked
+- The court number that has been booked (if applicable)
 - The actual LTA username that booked the court
 - If any courts couldn't be booked, which courts were considered
 
@@ -104,23 +104,11 @@ The workflow logs will show:
 
 ## Court Preferences
 
-The system uses a smart court selection strategy:
+The system uses a smart court selection strategy for a single booking:
 
-### First Booking (11 AM Saturday)
-The system tries to book courts in this order:
-1. Court 5 (preferred)
-2. Court 4
-3. Court 3
-
-### Second Booking (12 PM Saturday)
-For the second booking, the system prioritizes continuity:
-1. First tries to book the same court that was successfully booked for the first slot
-2. If that's not available, follows the standard preference order:
-   - Court 5
-   - Court 4
-   - Court 3
-
-This ensures that when possible, both time slots are booked on the same court, avoiding the need to switch courts between games.
+1. Book 11:00 first.
+2. If 11:00 fails, try 12:00.
+3. At most one booking will be made on Saturday.
 
 ## Troubleshooting
 
