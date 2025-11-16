@@ -7,8 +7,8 @@ This repository contains an automated system for booking tennis courts at Telfor
 The system runs automatically at the following times:
 
 ### Saturday Bookings
-- Runs at 11:00 PM UTC Friday (12:00 AM BST/GMT Saturday)
-- Attempts 11:00 first; if unavailable, attempts 12:00. At most one booking is made.
+- Runs at 00:00 UTC Saturday (midnight GMT Saturday)
+- Books both 11:00 and 12:00 time slots for a 2-hour booking.
 
 ## System Design
 
@@ -17,12 +17,12 @@ The system uses two mechanisms to ensure bookings happen correctly:
 
 1. **GitHub Actions Cron Schedule**:
    - Determines when the workflow runs
-   - Saturday schedule: `cron: '0 23 * * 5'` (11:00 PM UTC Friday / 12:00 AM BST Saturday)
+   - Saturday schedule: `cron: '0 0 * * 6'` (00:00 UTC Saturday / midnight GMT Saturday)
 
 2. **Day Validation Check**:
    - Acts as a secondary safeguard to verify the correct day
    - Sets the appropriate booking times based on the day
-   - Handles time zone differences (Friday night UTC = Saturday morning BST)
+   - Validates that the script runs early Saturday morning (00:00-02:00 UTC)
    - Enables safe manual triggering through the GitHub Actions interface on Saturday only
    - Prevents incorrect bookings if someone modifies the schedule
 

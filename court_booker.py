@@ -15,23 +15,16 @@ logging.basicConfig(
 def calculate_booking_date():
     """
     Calculates a booking date exactly two weeks from the effective booking day.
-    For bookings made late Friday UTC (early Saturday BST), it considers Saturday as the base.
+    Script runs on Saturday at midnight UTC (00:00 GMT), so no timezone adjustment needed.
     Uses midnight as the reference time for consistent date calculations.
     
     Returns:
         datetime or None: The booking date if valid
     """
     current_time = datetime.now() # This will be UTC on GitHub runner
-    base_date_for_calc = current_time
-
-    # Since all bookings are for Saturdays, treat late Friday UTC (23:00+)
-    # as Saturday for calculation consistency.
-    if current_time.weekday() == 4 and current_time.hour >= 23:
-        logging.info(f"Original UTC timestamp {current_time.strftime('%Y-%m-%d %H:%M:%S')} is Friday 23:00+ UTC. Adjusting base date to be Saturday for BST.")
-        base_date_for_calc = current_time + timedelta(days=1)
-
+    
     # Normalize to midnight for the two-week calculation
-    base_date = base_date_for_calc.replace(hour=0, minute=0, second=0, microsecond=0)
+    base_date = current_time.replace(hour=0, minute=0, second=0, microsecond=0)
     booking_date = base_date + timedelta(weeks=2)
     
     logging.info(f"""
@@ -373,7 +366,7 @@ def main():
     """
     Main function that coordinates multiple booking attempts.
     Schedule:
-    - Saturday: 11:00 and 12:00
+    - Saturday: Books both 11:00 and 12:00 for a 2-hour session
     """
     load_dotenv()
 
@@ -397,11 +390,7 @@ def main():
         current_date_utc = datetime.now() # UTC on runner
         py_weekday = current_date_utc.weekday() # Monday:0, ..., Friday:4, Saturday:5
 
-        if py_weekday == 4 and current_date_utc.hour >= 23:
-            day_name_for_logging = "Saturday (fallback due to Fri 23:00+ UTC)"
-            actual_time_slot1 = "11:00"
-            actual_time_slot2 = "12:00"
-        elif py_weekday == 5:
+        if py_weekday == 5:  # Saturday
             day_name_for_logging = "Saturday (fallback)"
             actual_time_slot1 = "11:00"
             actual_time_slot2 = "12:00"
@@ -413,7 +402,7 @@ def main():
         logging.info(f"Fallback Day: {day_name_for_logging}, Slot 1: {actual_time_slot1}, Slot 2: {actual_time_slot2}")
 
     logging.info(f"--- Running bookings for {day_name_for_logging} ---")
-    logging.info(f"Attempting first time slot: {actual_time_slot1} (will only try second if first fails)")
+    logging.info(f"Attempting to book both time slots: {actual_time_slot1} and {actual_time_slot2}")
 
     
     # Store all booking results
@@ -424,24 +413,37 @@ def main():
     booking_results_list.append(first_booking)
     logging.info(f"First booking attempt result: {first_booking['status']}")
     
-    booked_slot = None
+    booked_slots = []
     if first_booking['status'] == 'Success':
-        booked_slot = actual_time_slot1
-        logging.info("First slot booked successfully. Skipping second slot to ensure only one booking is made.")
-    else:
-        # Only attempt the second slot if the first one failed
+        booked_slots.append(actual_time_slot1)
+        logging.info(f"First slot ({actual_time_slot1}) booked successfully. Proceeding to book second slot.")
+        
+        # Try to book the same court for the second slot if first was successful
+        preferred_court = first_booking.get('booked_court')
         time.sleep(2)
-        second_booking = attempt_booking('LTA_USERNAME2', 'LTA_PASSWORD2', actual_time_slot2)
+        second_booking = attempt_booking('LTA_USERNAME', 'LTA_PASSWORD', actual_time_slot2, preferred_court)
         booking_results_list.append(second_booking)
         logging.info(f"Second booking attempt result: {second_booking['status']}")
         if second_booking['status'] == 'Success':
-            booked_slot = actual_time_slot2
+            booked_slots.append(actual_time_slot2)
+    else:
+        # First slot failed, try second slot anyway
+        logging.info("First slot booking failed. Attempting second slot anyway.")
+        time.sleep(2)
+        second_booking = attempt_booking('LTA_USERNAME', 'LTA_PASSWORD', actual_time_slot2)
+        booking_results_list.append(second_booking)
+        logging.info(f"Second booking attempt result: {second_booking['status']}")
+        if second_booking['status'] == 'Success':
+            booked_slots.append(actual_time_slot2)
     
     # Write results to a file for the GitHub Action to read
     with open('booking_results.txt', 'w') as f:
         f.write("Sport Court Booking Results\n")
-        if booked_slot:
-            f.write(f"Summary: Booked {booked_slot}\n\n")
+        if booked_slots:
+            if len(booked_slots) == 2:
+                f.write(f"Summary: Successfully booked both slots ({', '.join(booked_slots)}) for a 2-hour session\n\n")
+            else:
+                f.write(f"Summary: Booked {', '.join(booked_slots)} (partial booking)\n\n")
         else:
             f.write("Summary: No booking made\n\n")
         for result in booking_results_list:

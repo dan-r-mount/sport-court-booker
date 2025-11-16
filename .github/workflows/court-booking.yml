@@ -2,9 +2,9 @@ name: Sport Court Booking
 
 on:
   schedule:
-    # Regular schedule: Run at 11:00 PM UTC (12:00 AM BST) on Friday so bookings
-    # are always made for Saturday only. Schedule is set using UTC time.
-    - cron: '0 23 * * 5'  # Friday at 11:00 PM UTC (12:00 AM BST Saturday)
+    # Regular schedule: Run at midnight UTC on Saturday (00:00 GMT Saturday)
+    # Schedule is set using UTC time.
+    - cron: '0 0 * * 6'  # Saturday at 00:00 UTC (midnight GMT Saturday)
   workflow_dispatch:  # Allows manual triggering
 
 jobs:
@@ -65,12 +65,13 @@ jobs:
 
         # --- Scheduled Runs ---
         if [ "$EVENT_NAME" = "schedule" ]; then
-          # Friday 23:00 UTC schedule (this is Saturday 00:00 BST when the script *runs*)
-          # Courts should be booked for Saturday 11:00 BST and 12:00 BST
-          if [ "$UTC_DAY_NUM" = "5" ] && [ "$UTC_HOUR" = "23" ]; then
+          # Saturday 00:00 UTC schedule (this is Saturday 00:00 GMT when the script *runs*)
+          # Courts should be booked for Saturday 11:00 and 12:00
+          # Allow early Saturday hours (0-2) in case of slight delays
+          if [ "$UTC_DAY_NUM" = "6" ] && [ "$UTC_HOUR" -ge "0" ] && [ "$UTC_HOUR" -le "2" ]; then
             TARGET_DAY_NAME="Saturday" # The booking is for a Saturday
-            TARGET_TIME1="11:00"     # Courts booked for 11:00 BST
-            TARGET_TIME2="12:00"     # Courts booked for 12:00 BST
+            TARGET_TIME1="11:00"     # Courts booked for 11:00
+            TARGET_TIME2="12:00"     # Courts booked for 12:00
             IS_VALID_FOR_RUN="true"
           fi
         # --- Manual Workflow Dispatch ---
@@ -78,8 +79,8 @@ jobs:
         elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
           if [ "$UTC_DAY_NUM" = "6" ]; then # Saturday UTC
             TARGET_DAY_NAME="Saturday"
-            TARGET_TIME1="11:00" # Courts booked for 11:00 BST
-            TARGET_TIME2="12:00" # Courts booked for 12:00 BST
+            TARGET_TIME1="11:00" # Courts booked for 11:00
+            TARGET_TIME2="12:00" # Courts booked for 12:00
             IS_VALID_FOR_RUN="true"
           fi
         fi
