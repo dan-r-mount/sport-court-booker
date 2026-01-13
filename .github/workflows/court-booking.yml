@@ -7,7 +7,13 @@ on:
     # - During GMT (late October - late March): UK is UTC+0, so midnight UK = 00:00 UTC Saturday
     - cron: '0 23 * * 5'  # 23:00 UTC Friday (midnight Saturday UK during BST)
     - cron: '0 0 * * 6'   # 00:00 UTC Saturday (midnight Saturday UK during GMT)
-  workflow_dispatch:  # Allows manual triggering
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Test mode - bypass Saturday check and run immediately'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   book-courts:
@@ -25,14 +31,23 @@ jobs:
         UK_HOUR=$(TZ='Europe/London' date +%H)     # 00-23
         UK_DATE=$(TZ='Europe/London' date '+%Y-%m-%d %H:%M:%S %Z')
         EVENT_NAME="${{ github.event_name }}"
+        TEST_MODE="${{ inputs.test_mode }}"
 
         echo "Event: $EVENT_NAME"
+        echo "Test Mode: $TEST_MODE"
         echo "UK Time: $UK_DATE"
         echo "UK Day Num: $UK_DAY_NUM (6=Saturday), UK Hour: $UK_HOUR"
         IS_VALID_FOR_RUN="false"
 
+        # --- Test Mode - bypass day check ---
+        if [ "$TEST_MODE" = "true" ]; then
+          echo "*** TEST MODE ENABLED - bypassing day check ***"
+          TARGET_DAY_NAME="Saturday"
+          TARGET_TIME1="11:00"
+          TARGET_TIME2="12:00"
+          IS_VALID_FOR_RUN="true"
         # --- Scheduled Runs ---
-        if [ "$EVENT_NAME" = "schedule" ]; then
+        elif [ "$EVENT_NAME" = "schedule" ]; then
           # Check if it's Saturday in UK time (day 6) and within the first hour
           if [ "$UK_DAY_NUM" = "6" ] && [ "$UK_HOUR" = "00" ]; then
             TARGET_DAY_NAME="Saturday"
