@@ -66,7 +66,7 @@ def navigate_to_correct_date(page, target_date):
         
         # Add session check before navigation
         page.wait_for_load_state('networkidle')
-        page.wait_for_timeout(3000)
+        page.wait_for_timeout(1500)
         
         # Navigate directly to the date using the full URL
         base_url = os.getenv('BOOKING_URL', 'https://telfordparktennisclub.co.uk')
@@ -74,7 +74,7 @@ def navigate_to_correct_date(page, target_date):
         
         # Use softer navigation
         page.goto(full_url, wait_until='networkidle')
-        page.wait_for_timeout(5000)
+        page.wait_for_timeout(2000)
         
         # Take a screenshot after initial navigation
         page.screenshot(path=f"post-navigation-initial-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
@@ -244,7 +244,7 @@ def attempt_booking(username_env_var, password_env_var, time_slot, preferred_cou
     
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True, slow_mo=1000)
+        browser = playwright.chromium.launch(headless=True, slow_mo=300)
         context = browser.new_context()
         page = context.new_page()
         
@@ -270,7 +270,7 @@ def attempt_booking(username_env_var, password_env_var, time_slot, preferred_cou
                 
                 # After clicking login button
                 page.wait_for_load_state('networkidle')
-                page.wait_for_timeout(5000)  # Increased wait time
+                page.wait_for_timeout(2000)  # Increased wait time
                 
                 # Take screenshot of login form
                 page.screenshot(path=f"login-form-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
@@ -305,7 +305,7 @@ def attempt_booking(username_env_var, password_env_var, time_slot, preferred_cou
                 
                 # After submitting credentials
                 page.wait_for_load_state('networkidle')
-                page.wait_for_timeout(5000)  # Increased wait time
+                page.wait_for_timeout(2000)  # Increased wait time
                 
                 # Take screenshot after login attempt
                 page.screenshot(path=f"post-login-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
@@ -419,18 +419,19 @@ def main():
         logging.info(f"First slot ({actual_time_slot1}) booked successfully. Proceeding to book second slot.")
         
         # Try to book the same court for the second slot if first was successful
+        # Use a different user for the second slot to avoid booking conflicts
         preferred_court = first_booking.get('booked_court')
         time.sleep(2)
-        second_booking = attempt_booking('LTA_USERNAME', 'LTA_PASSWORD', actual_time_slot2, preferred_court)
+        second_booking = attempt_booking('LTA_USERNAME2', 'LTA_PASSWORD2', actual_time_slot2, preferred_court)
         booking_results_list.append(second_booking)
         logging.info(f"Second booking attempt result: {second_booking['status']}")
         if second_booking['status'] == 'Success':
             booked_slots.append(actual_time_slot2)
     else:
-        # First slot failed, try second slot anyway
+        # First slot failed, try second slot anyway with the second user
         logging.info("First slot booking failed. Attempting second slot anyway.")
         time.sleep(2)
-        second_booking = attempt_booking('LTA_USERNAME', 'LTA_PASSWORD', actual_time_slot2)
+        second_booking = attempt_booking('LTA_USERNAME2', 'LTA_PASSWORD2', actual_time_slot2)
         booking_results_list.append(second_booking)
         logging.info(f"Second booking attempt result: {second_booking['status']}")
         if second_booking['status'] == 'Success':
