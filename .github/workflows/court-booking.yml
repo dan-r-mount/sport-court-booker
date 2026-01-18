@@ -2,11 +2,11 @@ name: Sport Court Booking
 
 on:
   schedule:
-    # Two schedules to handle BST/GMT for midnight UK time on Saturday:
-    # - During BST (late March - late October): UK is UTC+1, so midnight UK = 23:00 UTC Friday
-    # - During GMT (late October - late March): UK is UTC+0, so midnight UK = 00:00 UTC Saturday
-    - cron: '0 23 * * 5'  # 23:00 UTC Friday (midnight Saturday UK during BST)
-    - cron: '0 0 * * 6'   # 00:00 UTC Saturday (midnight Saturday UK during GMT)
+    # Single schedule: Saturday 00:00 UTC
+    # - During GMT (Oct-Mar): This is Saturday 00:00 UK time
+    # - During BST (Mar-Oct): This is Saturday 01:00 UK time
+    # Both work fine since bookings are at 11:00/12:00. The day check allows 00:00-05:59 UK.
+    - cron: '0 0 * * 6'
   workflow_dispatch:
     inputs:
       test_mode:
@@ -48,15 +48,17 @@ jobs:
           IS_VALID_FOR_RUN="true"
         # --- Scheduled Runs ---
         elif [ "$EVENT_NAME" = "schedule" ]; then
-          # Check if it's Saturday in UK time (day 6) and within the first hour
-          if [ "$UK_DAY_NUM" = "6" ] && [ "$UK_HOUR" = "00" ]; then
+          # Check if it's Saturday in UK time (day 6) and within early morning hours
+          # GitHub Actions cron can have significant delays (sometimes hours) due to runner availability
+          # Allow 00:00-05:59 UK time to accommodate these delays
+          if [ "$UK_DAY_NUM" = "6" ] && [ "$UK_HOUR" -ge 0 ] && [ "$UK_HOUR" -le 5 ]; then
             TARGET_DAY_NAME="Saturday"
             TARGET_TIME1="11:00"
             TARGET_TIME2="12:00"
             IS_VALID_FOR_RUN="true"
-            echo "Valid scheduled run: It's Saturday $UK_HOUR:xx UK time"
+            echo "Valid scheduled run: It's Saturday $UK_HOUR:xx UK time (within 00:00-05:59 window)"
           else
-            echo "Skipping: UK time is not Saturday 00:xx (UK Day: $UK_DAY_NUM, Hour: $UK_HOUR)"
+            echo "Skipping: UK time is not Saturday 00:00-05:59 (UK Day: $UK_DAY_NUM, Hour: $UK_HOUR)"
           fi
         # --- Manual Workflow Dispatch ---
         elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
