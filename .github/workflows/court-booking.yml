@@ -2,15 +2,16 @@ name: Sport Court Booking
 
 on:
   schedule:
-    # Single schedule: Saturday 00:00 UTC
-    # - During GMT (Oct-Mar): This is Saturday 00:00 UK time
-    # - During BST (Mar-Oct): This is Saturday 01:00 UK time
-    # Both work fine since bookings are at 11:00/12:00. The day check allows 00:00-05:59 UK.
-    - cron: '0 0 * * 6'
+    # Two schedules to cover both GMT and BST, firing ~10min before midnight UK time:
+    # GMT period (late Oct - late Mar): 23:50 UTC Fri = 23:50 UK Fri -> 10min to midnight
+    # BST period (late Mar - late Oct): 22:50 UTC Fri = 23:50 UK Fri -> 10min to midnight
+    # The Python script has its own guard: exits immediately if midnight UK is >20min away.
+    - cron: '50 23 * * 5'
+    - cron: '50 22 * * 5'
   workflow_dispatch:
     inputs:
       test_mode:
-        description: 'Test mode - bypass Saturday check and run immediately'
+        description: 'Test mode - bypass Saturday check and midnight wait, run immediately'
         required: false
         type: boolean
         default: false
@@ -22,8 +23,8 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    # CHECK DAY FIRST - fail fast before any slow setup
-    - name: Check if correct day for booking
+    # Validate timing - fail fast before any slow setup
+    - name: Validate timing window
       id: check_day
       run: |
         # Use UK timezone (Europe/London) which automatically handles BST/GMT
@@ -36,55 +37,46 @@ jobs:
         echo "Event: $EVENT_NAME"
         echo "Test Mode: $TEST_MODE"
         echo "UK Time: $UK_DATE"
-        echo "UK Day Num: $UK_DAY_NUM (6=Saturday), UK Hour: $UK_HOUR"
-        IS_VALID_FOR_RUN="false"
+        echo "UK Day: $UK_DAY_NUM (5=Friday, 6=Saturday), UK Hour: $UK_HOUR"
+        IS_VALID="false"
 
-        # --- Test Mode - bypass day check ---
+        # --- Test Mode - bypass all checks ---
         if [ "$TEST_MODE" = "true" ]; then
-          echo "*** TEST MODE ENABLED - bypassing day check ***"
-          TARGET_DAY_NAME="Saturday"
-          TARGET_TIME1="11:00"
-          TARGET_TIME2="12:00"
-          IS_VALID_FOR_RUN="true"
+          echo "*** TEST MODE ENABLED - bypassing timing check ***"
+          IS_VALID="true"
         # --- Scheduled Runs ---
         elif [ "$EVENT_NAME" = "schedule" ]; then
-          # Check if it's Saturday in UK time (day 6) and within early morning hours
-          # GitHub Actions cron can have significant delays (sometimes hours) due to runner availability
-          # Allow 00:00-05:59 UK time to accommodate these delays
-          if [ "$UK_DAY_NUM" = "6" ] && [ "$UK_HOUR" -ge 0 ] && [ "$UK_HOUR" -le 5 ]; then
-            TARGET_DAY_NAME="Saturday"
-            TARGET_TIME1="11:00"
-            TARGET_TIME2="12:00"
-            IS_VALID_FOR_RUN="true"
-            echo "Valid scheduled run: It's Saturday $UK_HOUR:xx UK time (within 00:00-05:59 window)"
+          # Cron fires at 22:50 or 23:50 UTC on Friday.
+          # Valid window: Friday 22:00-23:59 UK (pre-midnight) or Saturday 00:00-05:59 UK (post-midnight fallback)
+          # The Python script's wait_until_midnight_uk() provides the precise timing guard.
+          if [ "$UK_DAY_NUM" = "5" ] && [ "$UK_HOUR" -ge 22 ]; then
+            IS_VALID="true"
+            echo "Valid: Friday $UK_HOUR:xx UK time (pre-midnight window)"
+          elif [ "$UK_DAY_NUM" = "6" ] && [ "$UK_HOUR" -le 5 ]; then
+            IS_VALID="true"
+            echo "Valid: Saturday $UK_HOUR:xx UK time (post-midnight window)"
           else
-            echo "Skipping: UK time is not Saturday 00:00-05:59 (UK Day: $UK_DAY_NUM, Hour: $UK_HOUR)"
+            echo "Skipping: UK time not in valid Friday-night/Saturday-early window (Day: $UK_DAY_NUM, Hour: $UK_HOUR)"
           fi
         # --- Manual Workflow Dispatch ---
         elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-          if [ "$UK_DAY_NUM" = "6" ]; then
-            TARGET_DAY_NAME="Saturday"
-            TARGET_TIME1="11:00"
-            TARGET_TIME2="12:00"
-            IS_VALID_FOR_RUN="true"
-            echo "Valid manual run: It's Saturday in UK time"
+          if [ "$UK_DAY_NUM" = "5" ] || [ "$UK_DAY_NUM" = "6" ]; then
+            IS_VALID="true"
+            echo "Valid manual run: Day $UK_DAY_NUM in UK time"
           else
-            echo "Skipping manual run: Not Saturday in UK time (UK Day: $UK_DAY_NUM)"
+            echo "Skipping manual run: Not Friday/Saturday in UK time (Day: $UK_DAY_NUM)"
           fi
         fi
 
-        if [ "$IS_VALID_FOR_RUN" = "true" ]; then
-          echo "IS_VALID_DAY=true" >> $GITHUB_ENV
-          echo "BOOKING_DAY=$TARGET_DAY_NAME" >> $GITHUB_ENV
-          echo "BOOKING_TIME1=$TARGET_TIME1" >> $GITHUB_ENV
-          echo "BOOKING_TIME2=$TARGET_TIME2" >> $GITHUB_ENV
-          echo "Setting BOOKING_DAY=$TARGET_DAY_NAME, TIME1=$TARGET_TIME1, TIME2=$TARGET_TIME2"
+        echo "IS_VALID_DAY=$IS_VALID" >> $GITHUB_ENV
+        if [ "$IS_VALID" = "true" ]; then
+          echo "BOOKING_DAY=Saturday" >> $GITHUB_ENV
+          echo "Proceeding with booking setup..."
         else
-          echo "IS_VALID_DAY=false" >> $GITHUB_ENV
-          echo "Skipping court booking - not the correct time in UK timezone."
+          echo "Skipping court booking - not in valid timing window."
         fi
 
-    # Only proceed with setup if it's a valid day
+    # Only proceed with setup if timing is valid
     - name: Set up Python
       if: env.IS_VALID_DAY == 'true'
       uses: actions/setup-python@v4
@@ -132,15 +124,7 @@ jobs:
       if: env.IS_VALID_DAY == 'true'
       run: playwright install chromium
 
-    # Add small random delay to appear natural (5-45 seconds)
-    - name: Add random delay
-      if: env.IS_VALID_DAY == 'true' && github.event_name == 'schedule'
-      run: |
-        RANDOM_DELAY=$(( $RANDOM % 41 + 5 ))  # 5-45 seconds
-        echo "Adding random delay of $RANDOM_DELAY seconds to appear natural"
-        echo "Current UK time: $(TZ='Europe/London' date '+%H:%M:%S')"
-        sleep $RANDOM_DELAY
-        echo "Proceeding with booking at UK time: $(TZ='Europe/London' date '+%H:%M:%S')"
+    # No random delay - speed is critical for midnight booking window
 
     - name: Run booking script
       if: env.IS_VALID_DAY == 'true'
@@ -150,9 +134,10 @@ jobs:
         LTA_PASSWORD: ${{ secrets.LTA_PASSWORD }}
         LTA_USERNAME2: ${{ secrets.LTA_USERNAME2 }}
         LTA_PASSWORD2: ${{ secrets.LTA_PASSWORD2 }}
+        TEST_MODE: ${{ inputs.test_mode }}
       run: python court_booker.py
 
-    - name: Upload screenshots and read results
+    - name: Read booking results
       if: env.IS_VALID_DAY == 'true'
       id: results
       run: |
