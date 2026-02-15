@@ -135,6 +135,7 @@ jobs:
         LTA_USERNAME2: ${{ secrets.LTA_USERNAME2 }}
         LTA_PASSWORD2: ${{ secrets.LTA_PASSWORD2 }}
         TEST_MODE: ${{ inputs.test_mode }}
+        TRIGGER_EVENT: ${{ github.event_name }}
       run: python court_booker.py
 
     - name: Read booking results

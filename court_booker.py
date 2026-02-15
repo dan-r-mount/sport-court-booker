@@ -25,52 +25,59 @@ TIME_BLOCKS = [
 
 def wait_until_midnight_uk():
     """
-    Wait until exactly midnight UK time (Europe/London).
+    Wait until exactly midnight UK time (Europe/London), then return True.
     
-    Returns True when midnight is reached, or False if midnight is more than
-    20 minutes away (meaning this is the wrong cron trigger for the current
-    BST/GMT period and the script should exit).
+    Handles three scenarios:
+      1. Midnight is in the future and <= 75 minutes away: wait for it.
+         (75 min covers both cron triggers during GMT + GitHub cron delays of ~30 min)
+      2. Midnight JUST passed (within the last 10 minutes): proceed immediately.
+         (handles GitHub delays that push the trigger past midnight)
+      3. Otherwise: wrong cron trigger for this timezone period, return False.
     
     Uses coarse sleeping until the last 5 seconds, then tight polling for
     sub-200ms precision at the midnight boundary.
     """
     now_uk = datetime.now(UK_TZ)
     
-    # Calculate next midnight UK time
-    midnight_uk = now_uk.replace(hour=0, minute=0, second=0, microsecond=0)
-    if now_uk >= midnight_uk:
-        midnight_uk += timedelta(days=1)
+    # Calculate today's midnight and tomorrow's midnight
+    today_midnight = now_uk.replace(hour=0, minute=0, second=0, microsecond=0)
+    next_midnight = today_midnight + timedelta(days=1)
     
-    wait_secs = (midnight_uk - now_uk).total_seconds()
+    # How long since today's midnight, and how long until next midnight
+    secs_since_midnight = (now_uk - today_midnight).total_seconds()
+    secs_until_midnight = (next_midnight - now_uk).total_seconds()
     
     logging.info(f"Current UK time: {now_uk.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-    logging.info(f"Next midnight UK: {midnight_uk.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-    logging.info(f"Wait time: {wait_secs:.1f} seconds ({wait_secs/60:.1f} minutes)")
+    logging.info(f"Seconds since today's midnight: {secs_since_midnight:.1f} ({secs_since_midnight/60:.1f} min)")
+    logging.info(f"Seconds until next midnight: {secs_until_midnight:.1f} ({secs_until_midnight/60:.1f} min)")
     
-    if wait_secs > 1200:  # More than 20 minutes away
-        logging.info("Midnight is more than 20 minutes away - wrong cron trigger for current timezone period.")
-        return False
-    
-    if wait_secs <= 0:
-        logging.info("Midnight has already passed. Proceeding immediately.")
+    # Case 1: Midnight JUST passed (within 10 minutes ago) - proceed immediately
+    if secs_since_midnight <= 600:
+        logging.info(f"Midnight was {secs_since_midnight:.0f}s ago (within 10 min). Proceeding immediately!")
         return True
     
-    logging.info(f"Waiting {wait_secs:.1f}s until midnight UK time...")
+    # Case 2: Midnight is coming up within 75 minutes - wait for it
+    if secs_until_midnight <= 4500:  # 75 minutes
+        logging.info(f"Midnight is {secs_until_midnight:.0f}s away ({secs_until_midnight/60:.1f} min). Waiting...")
+        
+        # Coarse sleep in chunks, then tight poll for the last 5 seconds
+        while True:
+            remaining = (next_midnight - datetime.now(UK_TZ)).total_seconds()
+            if remaining <= 0:
+                break
+            if remaining > 5:
+                sleep_time = min(remaining - 3, 10)  # Sleep in 10s chunks max, leave 3s buffer
+                time.sleep(sleep_time)
+            else:
+                time.sleep(0.05)  # 50ms tight polling for final seconds
+        
+        actual_time = datetime.now(UK_TZ)
+        logging.info(f"Midnight reached! Actual UK time: {actual_time.strftime('%H:%M:%S.%f')}")
+        return True
     
-    # Coarse sleep in chunks, then tight poll for the last 5 seconds
-    while True:
-        remaining = (midnight_uk - datetime.now(UK_TZ)).total_seconds()
-        if remaining <= 0:
-            break
-        if remaining > 5:
-            sleep_time = min(remaining - 3, 10)  # Sleep in 10s chunks max, leave 3s buffer
-            time.sleep(sleep_time)
-        else:
-            time.sleep(0.05)  # 50ms tight polling for final seconds
-    
-    actual_time = datetime.now(UK_TZ)
-    logging.info(f"Midnight reached! Actual UK time: {actual_time.strftime('%H:%M:%S.%f')}")
-    return True
+    # Case 3: Too far from midnight in either direction - wrong trigger
+    logging.info("Midnight is not within the valid window (past 10 min or next 75 min). Wrong cron trigger.")
+    return False
 
 
 def calculate_booking_date():
@@ -462,6 +469,12 @@ def main():
     load_dotenv()
     
     test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
+    trigger_event = os.getenv('TRIGGER_EVENT', 'unknown')
+    is_manual = trigger_event == 'workflow_dispatch'
+    skip_midnight_wait = test_mode or is_manual
+    
+    logging.info(f"Trigger event: {trigger_event}, Test mode: {test_mode}, Manual: {is_manual}")
+    
     booking_results_list = []
     block_used = None
     pw1, browser1, page1 = None, None, None
@@ -482,9 +495,9 @@ def main():
             return
         
         # ================================================================
-        # Phase 2: Wait for midnight UK time
+        # Phase 2: Wait for midnight UK time (scheduled runs only)
         # ================================================================
-        if not test_mode:
+        if not skip_midnight_wait:
             logging.info("=" * 60)
             logging.info("PHASE 2: Waiting for midnight UK time")
             logging.info("=" * 60)
@@ -492,12 +505,14 @@ def main():
             if not wait_until_midnight_uk():
                 logging.info("Wrong cron trigger for current timezone period. Exiting cleanly.")
                 cleanup_session(pw1, browser1)
-                write_results([], None, error="Wrong cron trigger - midnight UK is too far away.")
+                pw1, browser1, page1 = None, None, None
+                write_results([], None, error="Wrong cron trigger - midnight UK is not within the valid window.")
                 return
             
             logging.info("*** MIDNIGHT REACHED - GO GO GO! ***")
         else:
-            logging.info("*** TEST MODE - Skipping midnight wait ***")
+            reason = "TEST MODE" if test_mode else "MANUAL DISPATCH"
+            logging.info(f"*** {reason} - Skipping midnight wait, booking immediately ***")
         
         # ================================================================
         # Phase 3: Book courts with cascading time blocks
