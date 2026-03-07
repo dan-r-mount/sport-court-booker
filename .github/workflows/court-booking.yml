@@ -2,10 +2,14 @@ name: Sport Court Booking
 
 on:
   schedule:
-    # Regular schedule: Run at midnight UTC on Saturday (00:00 GMT Saturday)
-    # Schedule is set using UTC time.
-    - cron: '0 0 * * 6'  # Saturday at 00:00 UTC (midnight GMT Saturday)
+    # Run at midnight UTC on Saturday (00:00 GMT Saturday)
+    - cron: '0 0 * * 6'
   workflow_dispatch:  # Allows manual triggering
+
+# Prevent duplicate runs - if GitHub's cron fires twice, only one will execute
+concurrency:
+  group: court-booking
+  cancel-in-progress: false
 
 jobs:
   book-courts:
@@ -14,13 +18,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    # Move Python setup to the beginning so it runs for all trigger types
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
     
-    # Verify that requirements.txt exists
     - name: Verify requirements file
       run: |
         if [ -f "requirements.txt" ]; then
@@ -30,29 +32,22 @@ jobs:
           exit 1
         fi
     
-    # Pre-install necessary system dependencies
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        # Install the specific package that provides libasound2
         sudo apt-get install -y libasound2t64
-        # Install other system dependencies needed by Playwright
         sudo apt-get install -y libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libdbus-1-3 libxkbcommon0 \
                               libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 \
                               libnspr4 libnss3 libxss1 libxtst6 libgl1
         
-    # Install Python dependencies
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         
-    # Install only Chromium browser without dependencies
     - name: Install Chromium browser
       run: playwright install chromium
         
-    # The day checker now happens after Python setup, so we can test the dependency installation
-    # even if the day check fails
     - name: Check if correct day for booking
       id: check_day
       run: |
@@ -65,22 +60,22 @@ jobs:
 
         # --- Scheduled Runs ---
         if [ "$EVENT_NAME" = "schedule" ]; then
-          # Saturday 00:00 UTC schedule (this is Saturday 00:00 GMT when the script *runs*)
-          # Courts should be booked for Saturday 11:00 and 12:00
-          # Allow early Saturday hours (0-2) in case of slight delays
-          if [ "$UTC_DAY_NUM" = "6" ] && [ "$UTC_HOUR" -ge "0" ] && [ "$UTC_HOUR" -le "2" ]; then
-            TARGET_DAY_NAME="Saturday" # The booking is for a Saturday
-            TARGET_TIME1="11:00"     # Courts booked for 11:00
-            TARGET_TIME2="12:00"     # Courts booked for 12:00
+          # Saturday 00:00 UTC schedule
+          # Accept Friday 23:xx (cron fired slightly early) or Saturday 00-02 (normal + delayed)
+          if ([ "$UTC_DAY_NUM" = "5" ] && [ "$UTC_HOUR" -ge "23" ]) || \
+             ([ "$UTC_DAY_NUM" = "6" ] && [ "$UTC_HOUR" -le "2" ]); then
+            TARGET_DAY_NAME="Saturday"
+            TARGET_TIME1="11:00"
+            TARGET_TIME2="12:00"
             IS_VALID_FOR_RUN="true"
           fi
         # --- Manual Workflow Dispatch ---
-        # For manual runs, only allow Saturday bookings
         elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-          if [ "$UTC_DAY_NUM" = "6" ]; then # Saturday UTC
+          # Allow manual runs on Friday evening or Saturday
+          if [ "$UTC_DAY_NUM" = "6" ] || ([ "$UTC_DAY_NUM" = "5" ] && [ "$UTC_HOUR" -ge "23" ]); then
             TARGET_DAY_NAME="Saturday"
-            TARGET_TIME1="11:00" # Courts booked for 11:00
-            TARGET_TIME2="12:00" # Courts booked for 12:00
+            TARGET_TIME1="11:00"
+            TARGET_TIME2="12:00"
             IS_VALID_FOR_RUN="true"
           fi
         fi
@@ -94,19 +89,18 @@ jobs:
         else
           echo "IS_VALID_DAY=false" >> $GITHUB_ENV
           echo "Skipping court booking - not a configured schedule or dispatch day."
+          echo "Expected: Friday 23:xx or Saturday 00-02 UTC. Got: Day=$UTC_DAY_NUM Hour=$UTC_HOUR"
         fi
     
     - name: Add random delay
-      if: env.IS_VALID_DAY == 'true' && github.event_name == 'schedule'  # Only add delay for scheduled runs on valid booking days
+      if: env.IS_VALID_DAY == 'true' && github.event_name == 'schedule'
       run: |
-        # Add random delay between 10 and 30 seconds for all scheduled runs
-        MIN_DELAY=10    # 10 seconds
-        MAX_DELAY=30    # 30 seconds
+        # Add random delay between 5 and 15 seconds for scheduled runs
+        MIN_DELAY=5
+        MAX_DELAY=15
         RANDOM_DELAY=$(( $RANDOM % (MAX_DELAY - MIN_DELAY + 1) + MIN_DELAY ))
         echo "Adding random delay of $RANDOM_DELAY seconds"
         echo "Current time: $(date)"
-        echo "Will run booking in $RANDOM_DELAY seconds"
-        
         sleep $RANDOM_DELAY
         
     - name: Run booking script
@@ -119,11 +113,10 @@ jobs:
         LTA_PASSWORD2: ${{ secrets.LTA_PASSWORD2 }}
       run: python court_booker.py
 
-    - name: Upload screenshots and read results
+    - name: Read booking results
       if: env.IS_VALID_DAY == 'true'
       id: results
       run: |
-        # First handle the booking results
         if [ -f booking_results.txt ]; then
           RESULTS=$(cat booking_results.txt)
           echo "BOOKING_RESULTS<<EOF" >> $GITHUB_ENV
@@ -134,15 +127,16 @@ jobs:
         fi
       
     - name: Upload screenshots
-      if: env.IS_VALID_DAY == 'true' && hashFiles('*.png') != ''
+      if: env.IS_VALID_DAY == 'true' && always()
       uses: actions/upload-artifact@v4
       with:
         name: booking-screenshots-${{ github.run_id }}
         path: |
           *.png
         retention-days: 5
-        compression-level: 9  # Maximum compression
-        overwrite: true      # Overwrite if artifact exists
+        compression-level: 9
+        overwrite: true
+        if-no-files-found: ignore
 
     - name: Send email notification
       if: env.IS_VALID_DAY == 'true'
@@ -167,4 +161,4 @@ jobs:
           Best regards,
           Dan's Offshore Booking Team
         to: ${{ secrets.NOTIFICATION_EMAILS }}
-        from: Dan's Offshore Booking Team 
+        from: Dan's Offshore Booking Team
