@@ -190,34 +190,49 @@ def perform_login(page, username, password, user_label=""):
 def navigate_to_correct_date(page, target_date, user_label=""):
     """
     Navigates to the correct booking date with retry logic for reliability.
+    
+    IMPORTANT: The booking site is an SPA with hash-based routing (#?date=...).
+    After login we're already on /Booking/BookByDate, so we MUST use JavaScript
+    to change the hash fragment instead of page.goto() — a full HTTP request
+    would destroy the authenticated session.
+    
     Retries up to 3 times if navigation fails.
     """
     max_retries = 3
     formatted_date = target_date.strftime('%Y-%m-%d')
+    target_hash = f"?date={formatted_date}&role=member"
 
     for attempt in range(max_retries):
         logging.info(f"[{user_label}] Navigation attempt {attempt + 1}/{max_retries} to date: {formatted_date}")
         
         try:
+            current_url = page.url
             page.screenshot(path=f"pre-navigation-{user_label}-attempt{attempt+1}.png")
+            logging.info(f"[{user_label}] Current URL before navigation: {current_url}")
             
             # Brief wait for page stability
             page.wait_for_load_state('networkidle')
             page.wait_for_timeout(500)
             
-            # Navigate directly to the date using the full URL
-            base_url = os.getenv('BOOKING_URL', 'https://telfordparktennisclub.co.uk')
-            full_url = f"{base_url}/Booking/BookByDate#?date={formatted_date}&role=member"
-            
-            page.goto(full_url, wait_until='networkidle')
-            page.wait_for_timeout(1000)
+            if '/Booking/BookByDate' in current_url:
+                # Already on the booking page — use SPA hash navigation to preserve session
+                logging.info(f"[{user_label}] On booking page, using hash navigation (preserves session)")
+                page.evaluate(f'window.location.hash = "{target_hash}"')
+                page.wait_for_timeout(3000)  # Give the SPA time to load the new date
+            else:
+                # Not on booking page at all — need full navigation
+                logging.info(f"[{user_label}] Not on booking page, using full navigation")
+                base_url = os.getenv('BOOKING_URL', 'https://telfordparktennisclub.co.uk')
+                full_url = f"{base_url}/Booking/BookByDate#{target_hash}"
+                page.goto(full_url, wait_until='networkidle')
+                page.wait_for_timeout(2000)
             
             page.screenshot(path=f"post-navigation-{user_label}-attempt{attempt+1}.png")
             
-            # Check if we're still on the login page (session expired)
+            # Check if we ended up on the login page (session lost)
             login_button = page.locator('button[name="idp"][value="LTA2"]')
             if login_button.is_visible(timeout=2000):
-                logging.warning(f"[{user_label}] Still on login page after navigation, session might be lost")
+                logging.warning(f"[{user_label}] Session lost - login page visible after navigation")
                 if attempt < max_retries - 1:
                     logging.info(f"[{user_label}] Retrying navigation...")
                     page.wait_for_timeout(2000)
@@ -242,7 +257,8 @@ def navigate_to_correct_date(page, target_date, user_label=""):
                 page.screenshot(path=f"navigation-success-{user_label}.png")
                 return True
             else:
-                logging.error(f"[{user_label}] Navigation verification failed. Current URL: {current_url}")
+                logging.error(f"[{user_label}] Date verification failed. Current URL: {current_url}")
+                page.screenshot(path=f"wrong-date-{user_label}-attempt{attempt+1}.png")
                 if attempt < max_retries - 1:
                     logging.info(f"[{user_label}] Retrying navigation...")
                     page.wait_for_timeout(2000)
@@ -494,15 +510,24 @@ def booking_worker(args):
         
         logging.info(f"[{user_label}] Navigating to booking date {formatted_date}...")
         if not navigate_to_correct_date(page, booking_date, user_label):
-            # Session may have expired during midnight wait - try re-login
+            # Session may have expired during midnight wait - try full re-login
+            logging.warning(f"[{user_label}] Navigation failed. Attempting full re-login...")
+            
+            # Reload the base booking page to get a clean login state
+            base_url = os.getenv('BOOKING_URL', 'https://telfordparktennisclub.co.uk')
+            page.goto(f"{base_url}/Booking/BookByDate", wait_until='networkidle')
+            page.wait_for_timeout(1000)
+            
             login_btn = page.locator('button[name="idp"][value="LTA2"]')
-            if login_btn.is_visible(timeout=2000):
-                logging.warning(f"[{user_label}] Session expired during wait. Re-authenticating...")
+            if login_btn.is_visible(timeout=3000):
+                logging.info(f"[{user_label}] Login page found. Re-authenticating...")
+                handle_cookie_consent(page)
                 perform_login(page, username, password, user_label)
                 if not navigate_to_correct_date(page, booking_date, user_label):
                     raise Exception("Navigation to booking date failed after re-authentication")
             else:
-                raise Exception("Navigation to booking date failed")
+                # Not on login page but navigation still failed — might be a different error
+                raise Exception("Navigation to booking date failed and no login page found")
         
         # Phase 4: Book a court
         success, details = find_and_select_court(page, formatted_date, time_slot, user_label)
