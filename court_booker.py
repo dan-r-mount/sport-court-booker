@@ -5,6 +5,7 @@ import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import time
+from multiprocessing import Manager
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # Configure detailed logging to track the booking process
@@ -478,14 +479,18 @@ def booking_worker(args):
       1. Logs in to the booking site
       2. Waits for midnight UK time (all workers wait in parallel)
       3. Navigates to the booking date
-      4. Attempts to book a court
+      4. Books a court (with coordination between primary and secondary)
     
-    This provides full process isolation - each user gets their own browser
-    instance and Playwright server, eliminating any shared-state issues.
+    Court coordination:
+      - The PRIMARY user (11:00 slot) books first and signals which court it got.
+      - The SECONDARY user (12:00 slot) waits briefly for the primary's result,
+        then tries to book the SAME court for a continuous 2-hour session.
+      - If the primary hasn't finished or failed, the secondary falls back to
+        the default court order (5 → 4 → 3 → 2 → 1).
     
     Must be defined at module level so it can be pickled by ProcessPoolExecutor.
     """
-    username_env, password_env, time_slot, skip_midnight_wait = args
+    username_env, password_env, time_slot, skip_midnight_wait, is_primary, primary_done_event, shared_state = args
     
     # Load env vars in child process (needed for local .env file testing)
     load_dotenv()
@@ -507,6 +512,9 @@ def booking_worker(args):
     if not username or not password:
         result['error'] = f'Missing credentials for {username_env}'
         logging.error(f"[{user_label}] {result['error']}")
+        # Signal secondary so it doesn't hang waiting
+        if is_primary and not primary_done_event.is_set():
+            primary_done_event.set()
         return result
     
     pw = None
@@ -534,6 +542,9 @@ def booking_worker(args):
             if not wait_until_midnight_uk():
                 result['error'] = 'Wrong cron trigger - midnight UK not in valid window'
                 logging.info(f"[{user_label}] {result['error']}")
+                # Signal secondary so it doesn't hang waiting
+                if is_primary and not primary_done_event.is_set():
+                    primary_done_event.set()
                 return result
             logging.info(f"[{user_label}] *** MIDNIGHT - GO! ***")
         else:
@@ -565,10 +576,31 @@ def booking_worker(args):
                 # Not on login page but navigation still failed — might be a different error
                 raise Exception("Navigation to booking date failed and no login page found")
         
-        # Phase 4: Book a court
-        success, details = find_and_select_court(page, formatted_date, time_slot, user_label)
+        # Phase 4: Book a court (with coordination)
+        preferred_court = None
+        
+        if not is_primary:
+            # Secondary user: wait for primary to finish so we can try the same court
+            logging.info(f"[{user_label}] Waiting for primary user's booking result (up to 15s)...")
+            got_signal = primary_done_event.wait(timeout=15)
+            if got_signal:
+                preferred_court = shared_state.get('booked_court')
+                if preferred_court:
+                    logging.info(f"[{user_label}] Primary booked {preferred_court} — prioritizing same court for 2hr session")
+                else:
+                    logging.info(f"[{user_label}] Primary finished but didn't book a court — using default order")
+            else:
+                logging.warning(f"[{user_label}] Timed out waiting for primary — using default court order")
+        
+        success, details = find_and_select_court(page, formatted_date, time_slot, user_label, preferred_court)
         result.update(details)
         result['actual_username'] = username  # Restore after update
+        
+        if is_primary:
+            # Signal the secondary user with our result
+            shared_state['booked_court'] = details.get('booked_court')
+            primary_done_event.set()
+            logging.info(f"[{user_label}] Signaled secondary user (booked court: {details.get('booked_court', 'none')})")
         
         if success:
             result['status'] = 'Success'
@@ -582,6 +614,11 @@ def booking_worker(args):
     except Exception as e:
         logging.error(f"[{user_label}] Error: {str(e)}")
         result['error'] = str(e)
+        # Always signal secondary even on failure so it doesn't hang
+        if is_primary and not primary_done_event.is_set():
+            shared_state['booked_court'] = None
+            primary_done_event.set()
+            logging.info(f"[{user_label}] Signaled secondary user (primary failed)")
         return result
     finally:
         try:
@@ -633,10 +670,18 @@ def main():
     
     logging.info(f"Booking plan: User1 → {time_slot1}, User2 → {time_slot2} (in parallel)")
     
-    # Define booking tasks: (username_env, password_env, time_slot, skip_midnight_wait)
+    # Court coordination: primary user signals which court it booked,
+    # secondary user prioritizes the same court for a continuous 2-hour session.
+    # Both still login and navigate in parallel — only the court selection is coordinated.
+    manager = Manager()
+    shared_state = manager.dict({'booked_court': None})
+    primary_done = manager.Event()
+    
+    # Define booking tasks:
+    # (username_env, password_env, time_slot, skip_midnight_wait, is_primary, event, shared)
     tasks = [
-        ('LTA_USERNAME', 'LTA_PASSWORD', time_slot1, skip_midnight_wait),
-        ('LTA_USERNAME2', 'LTA_PASSWORD2', time_slot2, skip_midnight_wait),
+        ('LTA_USERNAME', 'LTA_PASSWORD', time_slot1, skip_midnight_wait, True, primary_done, shared_state),
+        ('LTA_USERNAME2', 'LTA_PASSWORD2', time_slot2, skip_midnight_wait, False, primary_done, shared_state),
     ]
     
     # Run both bookings in parallel using separate processes
