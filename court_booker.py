@@ -125,6 +125,17 @@ def handle_cookie_consent(page):
 def perform_login(page, username, password, user_label=""):
     """
     Perform the LTA login flow on the given page.
+    
+    The login involves a multi-step redirect chain:
+      1. Click LTA login button on booking site (telfordparktennisclub.co.uk)
+      2. Redirect to LTA SSO (mylta.my.site.com)
+      3. Enter credentials, submit
+      4. SSO redirects through auth.clubspark.uk back to booking site
+    
+    CRITICAL: We must wait for step 4 (redirect back to booking site) to complete
+    before returning. Without this, the caller would try to navigate while still
+    on the SSO domain, which breaks everything.
+    
     Raises Exception if login fails.
     """
     logging.info(f"[{user_label}] Starting login process...")
@@ -140,17 +151,28 @@ def perform_login(page, username, password, user_label=""):
     
     lta_login_button.click()
     
-    # Wait for login form to load
+    # Wait for redirect to LTA SSO login form
     page.wait_for_load_state('networkidle')
     page.wait_for_timeout(1000)
+    
+    current_url = page.url
+    logging.info(f"[{user_label}] After LTA button click, URL: {current_url[:120]}...")
+    
+    # Check if SSO has a cached session and auto-redirected back to booking site
+    if 'telfordparktennisclub.co.uk' in current_url and '/Booking/' in current_url:
+        logging.info(f"[{user_label}] SSO had cached session - auto-redirected back to booking site")
+        if not page.locator('button[name="idp"][value="LTA2"]').is_visible(timeout=2000):
+            logging.info(f"[{user_label}] Login successful via cached SSO session")
+            return
+        logging.warning(f"[{user_label}] Back on booking site but still showing login - SSO session invalid")
     
     page.screenshot(path=f"login-form-{user_label}.png")
     
     logging.info(f"[{user_label}] Entering login credentials...")
     username_input = page.locator('input[placeholder="Username"]')
-    if not username_input.is_visible(timeout=5000):
+    if not username_input.is_visible(timeout=10000):
         page.screenshot(path=f"no-username-field-{user_label}.png")
-        raise Exception("Username field not visible")
+        raise Exception(f"Username field not visible. Current URL: {page.url[:120]}")
     
     username_input.fill(username)
     page.wait_for_timeout(300)
@@ -173,18 +195,32 @@ def perform_login(page, username, password, user_label=""):
     
     login_button.click()
     
-    # Wait for login to complete
+    # CRITICAL: Wait for the full redirect chain to complete back to the booking site
+    # SSO → auth.clubspark.uk → telfordparktennisclub.co.uk/Booking/BookByDate
+    # This can take several seconds as it passes through multiple auth redirects
+    logging.info(f"[{user_label}] Waiting for redirect back to booking site...")
+    try:
+        page.wait_for_url("**/Booking/BookByDate**", timeout=30000)
+    except Exception:
+        current_url = page.url
+        page.screenshot(path=f"redirect-timeout-{user_label}.png")
+        logging.error(f"[{user_label}] Redirect timeout. Stuck at: {current_url[:120]}")
+        raise Exception(f"Login redirect did not complete within 30s. Current URL: {current_url[:120]}")
+    
     page.wait_for_load_state('networkidle')
     page.wait_for_timeout(1000)
     
     page.screenshot(path=f"post-login-{user_label}.png")
     
-    # Verify login success - if we still see the login button, login failed
+    current_url = page.url
+    logging.info(f"[{user_label}] Post-login URL: {current_url[:120]}")
+    
+    # Final verification: if the login button is visible, auth didn't stick
     if page.locator('button[name="idp"][value="LTA2"]').is_visible(timeout=2000):
         page.screenshot(path=f"login-failed-{user_label}.png")
-        raise Exception("Login failed - still on login page. Check credentials are correct and not wrapped in quotes.")
+        raise Exception("Login failed - redirected to booking site but still showing login page.")
     
-    logging.info(f"[{user_label}] Login successful")
+    logging.info(f"[{user_label}] Login successful - on booking site")
 
 
 def navigate_to_correct_date(page, target_date, user_label=""):
