@@ -16,6 +16,11 @@ on:
         type: boolean
         default: false
 
+# Prevent duplicate runs - if GitHub's cron fires twice, only one will execute
+concurrency:
+  group: court-booking
+  cancel-in-progress: false
+
 jobs:
   book-courts:
     runs-on: ubuntu-latest
@@ -152,7 +157,7 @@ jobs:
         fi
 
     - name: Upload screenshots
-      if: env.IS_VALID_DAY == 'true' && hashFiles('*.png') != ''
+      if: env.IS_VALID_DAY == 'true' && always()
       uses: actions/upload-artifact@v4
       with:
         name: booking-screenshots-${{ github.run_id }}
@@ -161,6 +166,7 @@ jobs:
         retention-days: 5
         compression-level: 9
         overwrite: true
+        if-no-files-found: ignore
 
     - name: Send email notification
       if: env.IS_VALID_DAY == 'true'
