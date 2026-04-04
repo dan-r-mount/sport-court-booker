@@ -25,8 +25,8 @@ def wait_until_midnight_uk():
     Handles three scenarios:
       1. Midnight is in the future and <= 75 minutes away: wait for it.
          (75 min covers both cron triggers during GMT + GitHub cron delays of ~30 min)
-      2. Midnight JUST passed (within the last 10 minutes): proceed immediately.
-         (handles GitHub delays that push the trigger past midnight)
+      2. Midnight already passed recently (within the grace window): proceed immediately.
+         (handles delayed GitHub starts after midnight)
       3. Otherwise: wrong cron trigger for this timezone period, return False.
     
     Uses coarse sleeping until the last 5 seconds, then tight polling for
@@ -45,10 +45,18 @@ def wait_until_midnight_uk():
     logging.info(f"Current UK time: {now_uk.strftime('%Y-%m-%d %H:%M:%S %Z')}")
     logging.info(f"Seconds since today's midnight: {secs_since_midnight:.1f} ({secs_since_midnight/60:.1f} min)")
     logging.info(f"Seconds until next midnight: {secs_until_midnight:.1f} ({secs_until_midnight/60:.1f} min)")
+
+    # Allow delayed post-midnight execution (default 2 hours).
+    # This covers occasional GitHub scheduling delays and runner queue time.
+    post_midnight_grace_minutes = int(os.getenv('POST_MIDNIGHT_GRACE_MINUTES', '120'))
+    post_midnight_grace_secs = post_midnight_grace_minutes * 60
     
-    # Case 1: Midnight JUST passed (within 10 minutes ago) - proceed immediately
-    if secs_since_midnight <= 600:
-        logging.info(f"Midnight was {secs_since_midnight:.0f}s ago (within 10 min). Proceeding immediately!")
+    # Case 1: Midnight already passed but still in grace window - proceed immediately
+    if secs_since_midnight <= post_midnight_grace_secs:
+        logging.info(
+            f"Midnight was {secs_since_midnight:.0f}s ago "
+            f"(within {post_midnight_grace_minutes} min grace). Proceeding immediately!"
+        )
         return True
     
     # Case 2: Midnight is coming up within 75 minutes - wait for it
@@ -71,7 +79,10 @@ def wait_until_midnight_uk():
         return True
     
     # Case 3: Too far from midnight in either direction - wrong trigger
-    logging.info("Midnight is not within the valid window (past 10 min or next 75 min). Wrong cron trigger.")
+    logging.info(
+        "Midnight is not within the valid window "
+        f"(past {post_midnight_grace_minutes} min or next 75 min). Wrong cron trigger."
+    )
     return False
 
 
