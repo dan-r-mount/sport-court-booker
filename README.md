@@ -70,6 +70,8 @@ Manual runs (workflow_dispatch) can use **Test mode** to skip the midnight wait 
 
 The workflow will run at the scheduled time; the script waits until midnight UK then books immediately.
 
+GitHub disables scheduled workflows after 60 days without repository activity. Pushing a new commit re-enables the schedule.
+
 ### 4. Pushing to GitHub from your machine
 
 If you clone or work on the repo locally, you need to authenticate so `git push` works. Choose one method.
