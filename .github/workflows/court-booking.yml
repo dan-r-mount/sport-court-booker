@@ -29,7 +29,7 @@ jobs:
       actions: read
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     # Validate timing - fail fast before any slow setup
     - name: Validate timing window
@@ -110,14 +110,14 @@ jobs:
     # Only proceed with setup if timing is valid
     - name: Set up Python
       if: env.IS_VALID_DAY == 'true'
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v6
       with:
         python-version: '3.10'
 
     # Cache pip dependencies
     - name: Cache pip dependencies
       if: env.IS_VALID_DAY == 'true'
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
@@ -127,7 +127,7 @@ jobs:
     # Cache Playwright browsers
     - name: Cache Playwright browsers
       if: env.IS_VALID_DAY == 'true'
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.cache/ms-playwright
         key: ${{ runner.os }}-playwright-${{ hashFiles('requirements.txt') }}
@@ -261,7 +261,7 @@ jobs:
 
     - name: Upload screenshots
       if: env.IS_VALID_DAY == 'true' && always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: booking-screenshots-${{ github.run_id }}
         path: |
@@ -273,7 +273,7 @@ jobs:
 
     - name: Send email notification
       if: env.IS_VALID_DAY == 'true' && always() && env.SEND_EMAIL == 'true'
-      uses: dawidd6/action-send-mail@v3
+      uses: dawidd6/action-send-mail@v18
       with:
         server_address: smtp.gmail.com
         server_port: 465
