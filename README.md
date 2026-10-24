@@ -9,7 +9,7 @@ The system runs automatically at the following times:
 ### Saturday Bookings
 - **Cron**: Two schedules fire ~10 minutes before midnight UK time (Friday night): `22:50` and `23:50` UTC so it works in both GMT and BST.
 - **Execution**: The script waits until exactly midnight UK time, then books as fast as possible.
-- **Time slots**: Tries primary block 11:00 + 12:00 first; if 11:00 is unavailable, falls back to 12:00 + 13:00. User1 books the first hour, User2 the second (same court preferred).
+- **Time slots**: Searches a three-hour window (11:00-14:00) for two consecutive hours. Tries 11:00 + 12:00 first; if 11:00 is unavailable on every court, falls back to 12:00 + 13:00. User1 books the first hour, User2 the hour straight after it (same court preferred).
 
 ## System Design
 
@@ -126,9 +126,9 @@ If you clone or work on the repo locally, you need to authenticate so `git push`
 
 ## Email Notifications
 
-After each run (successful or failed), the system will send an email containing:
+After each run (successful or failed), the system will send an email. The subject states what was booked, e.g. `Court Booking Results - Saturday 2026-11-07 - BOOKED 12:00-14:00 (Court 4)` (or `PARTIAL BOOKING ...` / `NO BOOKING MADE`). The body contains:
 - The day of booking (Saturday)
-- A summary line indicating which hour was booked (11:00 or 12:00), or that no booking was made
+- A summary line indicating the booked time window (e.g. 11:00-13:00 or 12:00-14:00), or that no booking was made
 - The date that the court has been booked for
 - The court number that has been booked (if applicable)
 - The actual LTA username that booked the court
@@ -151,7 +151,7 @@ The workflow logs will show:
 ## Court preferences and time blocks
 
 - **Courts**: Preferred order is Court 5, 4, 3, 2, 1. For the second hour we prefer the same court as the first.
-- **Time blocks**: Primary block is 11:00 (User1) + 12:00 (User2). If 11:00 is unavailable, we try 12:00 (User1) + 13:00 (User2).
+- **Time blocks**: Three-hour window 11:00-14:00. Primary block is 11:00 (User1) + 12:00 (User2). If 11:00 is unavailable, we try 12:00 (User1) + 13:00 (User2).
 - **Partial bookings**: If User1 gets a slot but User2 cannot get the next hour, we keep User1’s booking and report it.
 
 ## Troubleshooting

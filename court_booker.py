@@ -17,6 +17,16 @@ logging.basicConfig(
 # UK timezone for all time calculations
 UK_TZ = ZoneInfo('Europe/London')
 
+# Three-hour window: 11:00-14:00. We need two consecutive hours inside it, so the
+# options are 11:00+12:00 (preferred) or 12:00+13:00 if 11:00 is unavailable.
+# The primary user tries these start slots in order; the secondary user then books
+# the hour straight after whichever slot the primary got.
+PRIMARY_SLOTS = ["11:00", "12:00"]
+# Used by the secondary user only if the primary booked nothing / never reported back.
+SECONDARY_SLOTS = ["12:00", "13:00"]
+# How long the secondary waits for the primary (covers trying both candidate slots).
+PRIMARY_WAIT_SECS = 30
+
 
 def wait_until_midnight_uk():
     """
@@ -431,9 +441,79 @@ def find_and_select_court(page, formatted_date, time_slot, user_label="", prefer
         return False, booking_details
 
 
+def book_first_available_slot(page, formatted_date, candidate_slots, user_label="", preferred_court=None):
+    """
+    Tries each candidate slot in order and stops at the first one that books.
+    Returns (success, booking_details); details['time'] is the slot that was booked
+    (or the last slot attempted on failure) and details['slots_tried'] lists every attempt.
+    """
+    slots_tried = []
+    courts_checked = []
+    details = None
+    
+    for time_slot in candidate_slots:
+        slots_tried.append(time_slot)
+        success, details = find_and_select_court(
+            page, formatted_date, time_slot, user_label, preferred_court
+        )
+        for court in details['courts_checked']:
+            if court not in courts_checked:
+                courts_checked.append(court)
+        if success:
+            break
+        logging.info(f"[{user_label}] {time_slot} unavailable on all courts, trying next slot if any")
+    
+    details['slots_tried'] = slots_tried
+    details['courts_checked'] = courts_checked
+    return details['status'] == 'Success', details
+
+
+def slot_end(time_slot):
+    """Return the end time of a one-hour slot, e.g. '11:00' -> '12:00'."""
+    return f"{int(time_slot.split(':')[0]) + 1:02d}:00"
+
+
+def format_time_window(time_slots):
+    """
+    Collapse booked one-hour slots into readable windows.
+    ['11:00', '12:00'] -> '11:00-13:00'; ['12:00'] -> '12:00-13:00'.
+    """
+    windows = []
+    for slot in sorted(time_slots):
+        if windows and windows[-1][1] == slot:
+            windows[-1][1] = slot_end(slot)
+        else:
+            windows.append([slot, slot_end(slot)])
+    return " & ".join(f"{start}-{end}" for start, end in windows)
+
+
+def build_email_subject(booking_results_list):
+    """Build an email subject that states exactly what was (or wasn't) booked."""
+    booked = sorted(
+        (r for r in booking_results_list if r.get('status') == 'Success'),
+        key=lambda r: r.get('time', ''),
+    )
+    date = next((r['date'] for r in booking_results_list if r.get('date')), None)
+    date_part = f" {date}" if date else ""
+
+    if not booked:
+        return f"Court Booking Results - Saturday{date_part} - NO BOOKING MADE"
+
+    window = format_time_window([r['time'] for r in booked])
+    courts = []
+    for r in booked:
+        court = r.get('booked_court')
+        if court and court not in courts:
+            courts.append(court)
+    court_part = f" ({' & '.join(courts)})" if courts else ""
+    label = "BOOKED" if len(booked) == 2 else "PARTIAL BOOKING"
+    return f"Court Booking Results - Saturday{date_part} - {label} {window}{court_part}"
+
+
 def write_results(booking_results_list, error=None):
     """
     Write booking results to file for the GitHub Action to read.
+    Also writes booking_subject.txt, used as the notification email subject.
     """
     # Sort results by time slot for consistent output
     booking_results_list.sort(key=lambda x: x.get('time', ''))
@@ -448,16 +528,17 @@ def write_results(booking_results_list, error=None):
         
         # Summary line
         if len(booked) == 2:
-            times = f"{booked[0]['time']} + {booked[1]['time']}"
+            window = format_time_window([r['time'] for r in booked])
             same_court = booked[0].get('booked_court') == booked[1].get('booked_court')
             court_info = (
                 f"on {booked[0]['booked_court']}" if same_court
                 else f"on {booked[0]['booked_court']} and {booked[1]['booked_court']}"
             )
-            f.write(f"Summary: Successfully booked 2-hour session ({times}) {court_info}\n\n")
+            f.write(f"Summary: Successfully booked 2-hour session ({window}) {court_info}\n\n")
         elif len(booked) == 1:
+            window = format_time_window([booked[0]['time']])
             f.write(
-                f"Summary: Partial booking - {booked[0]['time']} on "
+                f"Summary: Partial booking - {window} on "
                 f"{booked[0].get('booked_court', '?')}\n\n"
             )
         else:
@@ -469,7 +550,11 @@ def write_results(booking_results_list, error=None):
         for result in booking_results_list:
             f.write(f"LTA Username: {result.get('actual_username', 'Unknown')}\n")
             f.write(f"Date: {result.get('date', 'N/A')}\n")
-            f.write(f"Time: {result.get('time', 'N/A')}\n")
+            if result.get('status') == 'Success':
+                f.write(f"Time: {format_time_window([result['time']])}\n")
+            else:
+                tried = result.get('slots_tried') or [result.get('time')]
+                f.write(f"Time slots tried: {', '.join(t for t in tried if t)}\n")
             f.write(f"Status: {result.get('status', 'Unknown')}\n")
             if result.get('booked_court'):
                 f.write(f"Booked Court: {result['booked_court']}\n")
@@ -478,6 +563,9 @@ def write_results(booking_results_list, error=None):
             if result.get('error'):
                 f.write(f"Error: {result['error']}\n")
             f.write("\n")
+    
+    with open('booking_subject.txt', 'w') as f:
+        f.write(build_email_subject(booking_results_list) + "\n")
     
     logging.info("Results written to booking_results.txt")
 
@@ -493,15 +581,18 @@ def booking_worker(args):
       4. Books a court (with coordination between primary and secondary)
     
     Court coordination:
-      - The PRIMARY user (11:00 slot) books first and signals which court it got.
-      - The SECONDARY user (12:00 slot) waits briefly for the primary's result,
-        then tries to book the SAME court for a continuous 2-hour session.
-      - If the primary hasn't finished or failed, the secondary falls back to
-        the default court order (5 → 4 → 3 → 2 → 1).
+      - The PRIMARY user tries its candidate slots in order (11:00, then 12:00 if
+        11:00 is unavailable on every court) and signals which slot and court it got.
+      - The SECONDARY user waits briefly for the primary's result, then books the
+        hour straight after the primary's slot, on the SAME court if possible, for a
+        continuous 2-hour session (11:00+12:00, or 12:00+13:00 as the fallback).
+      - If the primary failed or hasn't finished, the secondary tries its own
+        candidate slots (12:00, then 13:00) in the default court order (5 → 4 → 3 → 2 → 1).
     
     Must be defined at module level so it can be pickled by ProcessPoolExecutor.
     """
-    username_env, password_env, time_slot, skip_midnight_wait, is_primary, primary_done_event, shared_state = args
+    username_env, password_env, candidate_slots, skip_midnight_wait, is_primary, primary_done_event, shared_state = args
+    time_slot = candidate_slots[0]
     
     # Load env vars in child process (needed for local .env file testing)
     load_dotenv()
@@ -513,6 +604,7 @@ def booking_worker(args):
     result = {
         'actual_username': username or 'Unknown',
         'time': time_slot,
+        'slots_tried': [],
         'date': None,
         'status': 'Failed',
         'error': None,
@@ -592,24 +684,33 @@ def booking_worker(args):
         
         if not is_primary:
             # Secondary user: wait for primary to finish so we can try the same court
-            logging.info(f"[{user_label}] Waiting for primary user's booking result (up to 15s)...")
-            got_signal = primary_done_event.wait(timeout=15)
+            logging.info(f"[{user_label}] Waiting for primary user's booking result (up to {PRIMARY_WAIT_SECS}s)...")
+            got_signal = primary_done_event.wait(timeout=PRIMARY_WAIT_SECS)
             if got_signal:
                 preferred_court = shared_state.get('booked_court')
-                if preferred_court:
-                    logging.info(f"[{user_label}] Primary booked {preferred_court} — prioritizing same court for 2hr session")
+                primary_time = shared_state.get('booked_time')
+                if preferred_court and primary_time:
+                    candidate_slots = [slot_end(primary_time)]
+                    logging.info(
+                        f"[{user_label}] Primary booked {preferred_court} at {primary_time} — "
+                        f"trying {candidate_slots[0]} on the same court for a continuous session"
+                    )
                 else:
                     logging.info(f"[{user_label}] Primary finished but didn't book a court — using default order")
             else:
                 logging.warning(f"[{user_label}] Timed out waiting for primary — using default court order")
         
-        success, details = find_and_select_court(page, formatted_date, time_slot, user_label, preferred_court)
+        success, details = book_first_available_slot(
+            page, formatted_date, candidate_slots, user_label, preferred_court
+        )
+        time_slot = details['time']
         result.update(details)
         result['actual_username'] = username  # Restore after update
         
         if is_primary:
             # Signal the secondary user with our result
             shared_state['booked_court'] = details.get('booked_court')
+            shared_state['booked_time'] = details.get('time') if success else None
             primary_done_event.set()
             logging.info(f"[{user_label}] Signaled secondary user (booked court: {details.get('booked_court', 'none')})")
         
@@ -617,7 +718,9 @@ def booking_worker(args):
             result['status'] = 'Success'
             logging.info(f"[{user_label}] Successfully booked {time_slot} on {details.get('booked_court')}!")
         else:
-            logging.error(f"[{user_label}] Could not book any court for {time_slot}")
+            logging.error(
+                f"[{user_label}] Could not book any court for {', '.join(result['slots_tried'])}"
+            )
             page.screenshot(path=f"no-courts-{user_label}.png")
         
         return result
@@ -628,6 +731,7 @@ def booking_worker(args):
         # Always signal secondary even on failure so it doesn't hang
         if is_primary and not primary_done_event.is_set():
             shared_state['booked_court'] = None
+            shared_state['booked_time'] = None
             primary_done_event.set()
             logging.info(f"[{user_label}] Signaled secondary user (primary failed)")
         return result
@@ -675,24 +779,23 @@ def main():
         reason = "TEST MODE" if test_mode else "MANUAL DISPATCH"
         logging.info(f"*** {reason} - Will skip midnight wait, booking immediately ***")
     
-    # Time slots for each user
-    time_slot1 = "11:00"
-    time_slot2 = "12:00"
-    
-    logging.info(f"Booking plan: User1 → {time_slot1}, User2 → {time_slot2} (in parallel)")
+    logging.info(
+        f"Booking plan: User1 → {' then '.join(PRIMARY_SLOTS)}, "
+        f"User2 → hour after User1's slot (default {' then '.join(SECONDARY_SLOTS)}) (in parallel)"
+    )
     
     # Court coordination: primary user signals which court it booked,
     # secondary user prioritizes the same court for a continuous 2-hour session.
     # Both still login and navigate in parallel — only the court selection is coordinated.
     manager = Manager()
-    shared_state = manager.dict({'booked_court': None})
+    shared_state = manager.dict({'booked_court': None, 'booked_time': None})
     primary_done = manager.Event()
     
     # Define booking tasks:
-    # (username_env, password_env, time_slot, skip_midnight_wait, is_primary, event, shared)
+    # (username_env, password_env, candidate_slots, skip_midnight_wait, is_primary, event, shared)
     tasks = [
-        ('LTA_USERNAME', 'LTA_PASSWORD', time_slot1, skip_midnight_wait, True, primary_done, shared_state),
-        ('LTA_USERNAME2', 'LTA_PASSWORD2', time_slot2, skip_midnight_wait, False, primary_done, shared_state),
+        ('LTA_USERNAME', 'LTA_PASSWORD', PRIMARY_SLOTS, skip_midnight_wait, True, primary_done, shared_state),
+        ('LTA_USERNAME2', 'LTA_PASSWORD2', SECONDARY_SLOTS, skip_midnight_wait, False, primary_done, shared_state),
     ]
     
     # Run both bookings in parallel using separate processes
@@ -721,7 +824,8 @@ def main():
                 logging.error(f"Worker process failed for {task[0]}: {str(e)}")
                 booking_results_list.append({
                     'actual_username': os.getenv(task[0], 'Unknown'),
-                    'time': task[2],
+                    'time': task[2][0],
+                    'slots_tried': [],
                     'date': None,
                     'status': 'Failed',
                     'error': f'Process error: {str(e)}',
