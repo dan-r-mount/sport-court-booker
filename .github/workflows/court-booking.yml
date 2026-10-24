@@ -189,6 +189,12 @@ jobs:
           echo "BOOKING_RESULTS=Booking run completed with outcome: ${BOOKING_STEP_OUTCOME:-unknown}. No booking_results.txt file was produced." >> $GITHUB_ENV
         fi
 
+        if [ -s booking_subject.txt ]; then
+          echo "BOOKING_SUBJECT=$(head -n 1 booking_subject.txt)" >> $GITHUB_ENV
+        else
+          echo "BOOKING_SUBJECT=Court Booking Results - ${BOOKING_DAY} - NO BOOKING CONFIRMED" >> $GITHUB_ENV
+        fi
+
     - name: Decide whether to send notification email
       if: env.IS_VALID_DAY == 'true' && always()
       env:
@@ -279,7 +285,7 @@ jobs:
         server_port: 465
         username: ${{ secrets.EMAIL_USERNAME }}
         password: ${{ secrets.EMAIL_PASSWORD }}
-        subject: "Court Booking Results - ${{ env.BOOKING_DAY }}"
+        subject: "${{ env.BOOKING_SUBJECT }}"
         body: |
           Hi team,
 
